@@ -1,1 +1,2 @@
-어디로 가야할 지 몰라
+
+날씨 api (기상청 api)/ 서울시 교통수단 api/ visit seoul api/ 
