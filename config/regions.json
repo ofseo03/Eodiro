@@ -1,0 +1,7 @@
+[
+  {"id":"seongsu","name":"성수","district":"성동구","dongs":["성수1가1동","성수1가2동","성수2가1동","성수2가3동"],"lat":37.5446,"lng":127.0559},
+  {"id":"tongui","name":"통의","district":"종로구","dongs":["청운효자동"],"lat":37.5832,"lng":126.9706},
+  {"id":"ikseon","name":"익선","district":"종로구","dongs":["종로1·2·3·4가동"],"lat":37.5754,"lng":126.9916},
+  {"id":"hongdae","name":"홍대","district":"마포구","dongs":["서교동"],"lat":37.5558,"lng":126.9228},
+  {"id":"yeonnam","name":"연남","district":"마포구","dongs":["연남동"],"lat":37.5663,"lng":126.9226}
+]
