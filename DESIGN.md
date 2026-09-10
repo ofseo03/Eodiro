@@ -255,7 +255,7 @@ Optimistic VF는 Meta 전용 서체라 배포할 수 없으므로 **Pretendard V
 - **`button-buy-cta`** — 코발트 필 CTA ("추천받기", "다시 추천", "이 장소 교체", "300m로 넓히기"). {colors.primary} / {colors.on-primary}, pressed는 {colors.primary-deep}. **홈 폼·결과 페이지·바텀시트 안에서만** 쓴다.
 - **`button-secondary`** — 2px {colors.ink-deep} 아웃라인 필 ("어떻게 추천하나요"). 히어로 이중 CTA의 두 번째 버튼.
 - **`button-ghost`** — `2px solid rgba(10,19,23,0.12)` 아웃라인. 3차 액션 ("건너뛰기", "홈으로", "재시도").
-- **`button-pill-tab` / `-active`** — 지역 필 탭 (성수 / 통의 / 익선 / 홍대 / 연남), 취향 다중 선택 칩(음식 종류·놀거리 유형·분위기). 활성 시 {colors.ink-deep} 채움.
+- **`button-pill-tab` / `-active`** — 자치구 필 탭 (종로구 / 중구 / … 25개, 가로 스크롤), 취향 다중 선택 칩(음식 종류·놀거리 유형·분위기). 활성 시 {colors.ink-deep} 채움.
 - **`button-icon-circular`** — 40×40 원형 (헤더 설정 아이콘, 바텀시트 닫기, 지도 현재 위치).
 
 ### Cards & Containers
@@ -290,7 +290,7 @@ Optimistic VF는 Meta 전용 서체라 배포할 수 없으므로 **Pretendard V
 
 ### Signature Components (어디로 매핑)
 - **`hero-band-marketing`** — 랜딩 히어로. 풀블리드 서울 골목 사진 + 흰 {typography.hero-display} "오늘, 어디로 갈까요?" + {typography.subtitle-md} 부제 + `button-primary`("지금 시작하기") · `button-secondary`("어떻게 추천하나요").
-- **`region-picker-row`** (= `color-sku-picker-row`) — 5~6열 1:1 지역 타일({colors.surface-soft}, {rounded.lg}). 선택 시 `2px solid {colors.ink-deep}`. 타일 아래 지역명 {typography.body-sm-bold}, 행정동 수 {typography.body-sm}.
+- **`region-picker-row`** (= `color-sku-picker-row`) — 5~6열 1:1 동네 타일({colors.surface-soft}, {rounded.lg}). 선택한 자치구의 동네만 표시하며, 위에 `text-input` 검색(동네명·행정동명 부분 일치)을 둔다. 선택 시 `2px solid {colors.ink-deep}`. 타일 아래 동네명 {typography.body-sm-bold}, 행정동 수 {typography.body-sm}. 장소 데이터 부족 동네는 `-disabled` 톤 + `badge-attention`.
 - **`course-request-panel`** (= `card-checkout-summary` 밀도) — 홈 입력 폼. 섹션 제목 {typography.subtitle-lg}, 그룹 간격 {spacing.lg}, 맨 아래 전폭 `button-buy-cta` "추천받기".
 - **`result-gallery`** (= `product-gallery-pdp`) — 결과 페이지. 좌: {rounded.xxxl} 지도(마커 + 순서 번호), 우: 고정 `card-checkout-summary`. 아래: 타임라인.
 - **`course-timeline`** — 장소 카드({rounded.xl}, `product-thumbnail` + 장소명 {typography.subtitle-lg} + 배지 행) → 이동 구간 행({typography.body-sm}: 수단 아이콘 · 거리 · 시간 · 상태 배지) → 장소 카드 순 세로 배치. 구간 실패 시 `badge-critical` + `button-ghost` "재시도".
