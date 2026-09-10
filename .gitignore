@@ -1,0 +1,88 @@
+# ===== 의존성 =====
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ===== Next.js 빌드 산출물 =====
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+*.tsbuildinfo
+
+# ===== 환경변수 (공공 API 키는 절대 커밋하지 않음) =====
+.env
+.env.*
+!.env.example
+
+# ===== 테스트 · 커버리지 =====
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# ===== 로그 · 디버그 =====
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ===== 캐시 =====
+.cache/
+.eslintcache
+.stylelintcache
+.turbo/
+.swc/
+.parcel-cache/
+
+# ===== 배포 =====
+.vercel
+.netlify
+
+# ===== 데이터베이스 (장소 캐시 DB 로컬 파일) =====
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+prisma/*.db
+prisma/dev.db*
+
+# ===== 에디터 · IDE =====
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===== 기타 =====
+*.pem
+*.tgz
+.npm
+.tmp/
+tmp/
+temp/
