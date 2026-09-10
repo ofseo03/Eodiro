@@ -4,3 +4,7 @@
 
 - 서비스 스펙: [`spec.md`](spec.md)
 - 디자인 시스템: [`DESIGN.md`](DESIGN.md) · CSS 토큰 [`design/tokens.css`](design/tokens.css) · 미리보기 [`design/preview.html`](design/preview.html)
+
+## 사용 공공 API
+
+날씨 API(기상청) / 서울시 교통수단 API / Visit Seoul API
