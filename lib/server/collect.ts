@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { atmosphereSchema, categorySchema, environmentSchema, foodSchema, activitySchema, hoursSchema, placeSchema, regions, type Place } from '../contracts';
+import { atmosphereSchema, categorySchema, environmentSchema, foodSchema, activitySchema, hoursSchema, placeSchema, type Place } from '../contracts';
 import rules from '../../config/classification.json';
-import { fetchJson } from './http';
+import { fetchJson, fetchText } from './http';
+import { locateRegion } from '../regions';
 
 export const sources = ['TbVwRestaurants', 'TbVwEntertainment'] as const;
 const rowSchema = z.object({
@@ -22,7 +23,13 @@ export function parseSource(raw: unknown, service: typeof sources[number]) {
 
 export async function collectSource(service: typeof sources[number], sample = false): Promise<SourceRow[]> {
   const key = sample ? 'sample' : process.env.SEOUL_API_KEY;
-  if (!key) throw new Error('SEOUL_API_KEY가 필요합니다');
+  if (!key) {
+    // The same official dataset also offers a public JSON download without an API key.
+    const raw = await fetchJson(new URL('https://datafile.seoul.go.kr/bigfile/iot/sheet/json/download.do'), undefined,
+      new URLSearchParams({srvType: 'S', infId: service === 'TbVwRestaurants' ? 'OA-21054' : 'OA-21052',
+        serviceKind: '0', pageNo: '1', ssUserId: 'SAMPLE_VIEW', filterCol: 'LANG_CODE_ID', txtFilter: 'ko'}));
+    return parseDownload(raw, service);
+  }
   const collected: SourceRow[] = [];
   let total = Infinity;
   for (let start = 1; start <= total; start += 1000) {
@@ -36,6 +43,31 @@ export async function collectSource(service: typeof sources[number], sample = fa
     if (sample) break;
   }
   return collected;
+}
+
+export function parseDownload(raw: unknown, service: typeof sources[number]): SourceRow[] {
+  const data = z.object({DATA: z.array(z.record(z.string(), z.unknown())).min(1)}).parse(raw);
+  return data.DATA.map(row => rowSchema.parse(Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toUpperCase(), v === null ? '' : String(v)]))))
+    .filter(row => row.LANG_CODE_ID === 'ko').map(row => ({...row, service}));
+}
+
+function textContent(value: string) {
+  return value.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+export function parsePlacePage(html: string) {
+  const lat = /data-map-y="([\d.]+)"/.exec(html)?.[1], lng = /data-map-x="([\d.]+)"/.exec(html)?.[1];
+  const description = /<meta\s+name="description"\s+content="([^"]*)"/.exec(html)?.[1] ?? '';
+  const category = /<div class="text-type">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? '';
+  return { location: lat && lng ? {lat: Number(lat), lng: Number(lng)} : null,
+    description: textContent(description), category: textContent(category) };
+}
+
+export async function getPlacePage(sourceUrl: string) {
+  const url = new URL(sourceUrl);
+  if (url.protocol !== 'https:' || url.hostname !== 'korean.visitseoul.net') throw new Error('허용되지 않은 장소 출처');
+  return parsePlacePage(await fetchText(url));
 }
 
 const reviewSchema = z.strictObject({
@@ -54,38 +86,20 @@ export function atmosphereTags(description: string) {
     .map(([tag]) => atmosphereSchema.parse(tag));
 }
 
-export async function geocode(address: string) {
-  if (!process.env.KAKAO_REST_API_KEY) throw new Error('KAKAO_REST_API_KEY가 필요합니다');
-  const headers = { Authorization: `KakaoAK ${process.env.KAKAO_REST_API_KEY}` };
-  const search = new URL('https://dapi.kakao.com/v2/local/search/address.json');
-  search.searchParams.set('query', address.replace(/^\d{3}-?\d{3}\s+|^\d{5}\s+/, '').trim());
-  const raw = z.object({ documents: z.array(z.object({ x: z.string(), y: z.string() })) }).parse(await fetchJson(search, headers));
-  if (raw.documents.length !== 1) return null; // Ambiguous addresses require correction, never pick an arbitrary result.
-  const { x, y } = raw.documents[0];
-  const reverse = new URL('https://dapi.kakao.com/v2/local/geo/coord2regioncode.json');
-  reverse.search = new URLSearchParams({ x, y }).toString();
-  const result = z.object({ documents: z.array(z.object({
-    region_type: z.string(), region_1depth_name: z.string(), region_2depth_name: z.string(), region_3depth_name: z.string(),
-  })) }).parse(await fetchJson(reverse, headers));
-  const dong = result.documents.find(d => d.region_type === 'H' && d.region_1depth_name === '서울특별시');
-  if (!dong) return null;
-  const dongName = (name: string) => name.replace(/[.·,]/g, '');
-  const region = regions.find(r => r.district === dong.region_2depth_name && r.dongs.some(d => dongName(d) === dongName(dong.region_3depth_name)));
-  return region ? { lat: Number(y), lng: Number(x), regionId: region.id, district: region.district,
-    dong: region.dongs.find(d => dongName(d) === dongName(dong.region_3depth_name))! } : null;
-}
-
 export async function normalizeRows(rows: SourceRow[], input: unknown) {
   const reviews = reviewsSchema.parse(input), places: Place[] = [], rejected: { id: string; reason: string }[] = [];
   for (const row of rows) {
     const id = `${row.service}:${row.POST_SN}`, review = reviews[id];
     if (!review) { rejected.push({ id, reason: '분류 미검수' }); continue; }
     const address = row.NEW_ADDRESS || row.ADDRESS;
-    const location = await geocode(address);
+    const detail = await getPlacePage(row.POST_URL);
+    const membership = detail.location ? locateRegion(detail.location) : null;
+    const location = detail.location && membership ? {...detail.location, ...membership} : null;
     if (!location) { rejected.push({ id, reason: '좌표·행정동 미확인 또는 서비스 지역 밖' }); continue; }
     places.push(placeSchema.parse({ id, name: row.POST_SJ, address, ...location, ...review,
       environment: review.environment ?? inferEnvironment(review.category, review.activity),
-      environmentSource: review.environment ? 'reviewed' : 'inferred', atmospheres: atmosphereTags(review.description),
+      description: review.description || detail.description,
+      environmentSource: review.environment ? 'reviewed' : 'inferred', atmospheres: atmosphereTags(review.description || detail.description),
       hoursText: [row.CMMN_USE_TIME, row.CMMN_BSNDE, row.CMMN_RSTDE].filter(Boolean).join(' / '),
       source: '서울관광재단 · Visit Seoul (공공누리 제1유형)', sourceUrl: row.POST_URL, collectedAt: new Date().toISOString() }));
   }

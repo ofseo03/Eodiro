@@ -57,9 +57,10 @@ export async function GET(request: Request, context: Context) {
     if (path === 'regions') return json({ regions });
     if (path === 'capabilities') return json({
       walking: { status: 'implemented', accuracy: 'estimated', factor: 1.3, speedKmh: 4 },
-      places: { configured: Boolean(process.env.SEOUL_API_KEY && process.env.KAKAO_REST_API_KEY), liveVerified: false },
+      places: { configured: true, source: 'visit_seoul', publicDownload: true },
       weather: { configured: Boolean(process.env.DATA_GO_KR_KEY), liveVerified: false },
-      transit: { configured: Boolean(process.env.DATA_GO_KR_KEY), liveVerified: false, doorToDoorTimeVerified: false },
+      transit: { configured: Boolean(process.env.DATA_GO_KR_KEY), liveVerified: false,
+        source: 'seoul_transit', timing: 'provider_duration' },
       taxi: { status: 'review_only', minutes: null },
     });
     if (path === 'places') {

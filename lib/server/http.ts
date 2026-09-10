@@ -1,5 +1,5 @@
-export async function fetchText(url: URL, headers?: HeadersInit) {
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'error' });
+export async function fetchText(url: URL, headers?: HeadersInit, body?: URLSearchParams) {
+  const response = await fetch(url, { headers, body, method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'error' });
   if (!response.ok) throw new Error('외부 API 응답 오류');
   const reader = response.body?.getReader();
   if (!reader) throw new Error('외부 API 응답 없음');
@@ -15,6 +15,6 @@ export async function fetchText(url: URL, headers?: HeadersInit) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function fetchJson(url: URL, headers?: HeadersInit): Promise<unknown> {
-  return JSON.parse(await fetchText(url, headers));
+export async function fetchJson(url: URL, headers?: HeadersInit, body?: URLSearchParams): Promise<unknown> {
+  return JSON.parse(await fetchText(url, headers, body));
 }

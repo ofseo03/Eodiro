@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import regionData from '../config/regions.json';
+import { locateRegion } from './regions';
 
 export const regions = regionData;
 export const categorySchema = z.enum(['cafe', 'restaurant', 'activity']);
@@ -53,7 +54,8 @@ export const placeSchema = z.strictObject({
   hours: hoursSchema.nullable().default(null), hoursText: z.string().default(''),
   sourceUrl: z.url().refine(u => ['https:', 'http:'].includes(new URL(u).protocol)),
   source: z.string().min(1), collectedAt: dateTimeSchema,
-}).refine(p => regions.some(r => r.id === p.regionId && r.district === p.district && r.dongs.includes(p.dong)),
+}).refine(p => regions.some(r => r.id === p.regionId && r.district === p.district && r.dongs.includes(p.dong))
+  && locateRegion(p)?.regionId === p.regionId,
   '장소의 행정동이 선택 지역에 속하지 않습니다');
 
 export type Category = z.infer<typeof categorySchema>;
@@ -74,7 +76,11 @@ export type Leg = {
   accuracy: 'estimated' | 'provider' | 'unknown';
   walkLimit: 'estimated_met' | 'estimated_exceeded' | 'not_applicable';
   accessWalkMeters: number | null; accessWalkMinutes: number | null;
-  routes: { mode: 'bus' | 'subway'; name: string; from: string; to: string }[];
+  accessWalkAccuracy?: 'estimated' | 'provider' | 'unknown';
+  routes: { mode: 'bus' | 'subway'; name: string; from: string; to: string;
+    fromLocation?: {lat: number; lng: number}; toLocation?: {lat: number; lng: number} }[];
+  transferWalkMeters?: number | null;
+  transferWalkMinutes?: number | null;
   providerMinutes: number | null; timingNote: string | null;
   referenceAt: string; fetchedAt: string; reason: string | null;
 };

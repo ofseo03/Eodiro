@@ -17,3 +17,37 @@ export function forecastGrid(lat: number, lng: number) {
   const theta = (lng - 126) * rad * sn;
   return { nx: Math.floor(ra * Math.sin(theta) + 43.5), ny: Math.floor(ro - ra * Math.cos(theta) + 136.5) };
 }
+
+export type PolygonCoordinates = number[][][];
+export function polygonContains(point: {lat: number; lng: number}, rings: PolygonCoordinates) {
+  const inRing = (ring: number[][]) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [x, y] = ring[i], [px, py] = ring[j];
+      const cross = (point.lng - x) * (py - y) - (point.lat - y) * (px - x);
+      if (Math.abs(cross) < 1e-12 && point.lng >= Math.min(x, px) && point.lng <= Math.max(x, px)
+        && point.lat >= Math.min(y, py) && point.lat <= Math.max(y, py)) return true;
+      if ((y > point.lat) !== (py > point.lat) && point.lng < (px - x) * (point.lat - y) / (py - y) + x) inside = !inside;
+    }
+    return inside;
+  };
+  return inRing(rings[0]) && !rings.slice(1).some(inRing);
+}
+
+export function polygonCenter(polygons: PolygonCoordinates[]) {
+  let area = 0, xSum = 0, ySum = 0;
+  for (const polygon of polygons) for (const [index, ring] of polygon.entries()) {
+    let crossSum = 0, cx = 0, cy = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const [x, y] = [ring[i][0] - 127, ring[i][1] - 37.5];
+      const [nx, ny] = [ring[i + 1][0] - 127, ring[i + 1][1] - 37.5];
+      const cross = x * ny - nx * y;
+      crossSum += cross; cx += (x + nx) * cross; cy += (y + ny) * cross;
+    }
+    if (!crossSum) continue;
+    const weight = Math.abs(crossSum) * (index ? -1 : 1);
+    area += weight; xSum += cx / (3 * crossSum) * weight; ySum += cy / (3 * crossSum) * weight;
+  }
+  if (area <= 0) throw new Error('행정동 경계 면적 오류');
+  return { lng: xSum / area + 127, lat: ySum / area + 37.5 };
+}

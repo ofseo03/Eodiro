@@ -11,6 +11,9 @@ import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
 import { readPlaces, replaceCatalog } from '../lib/server/db';
 import { createCourse } from '../lib/client';
+import { locateRegion } from '../lib/regions';
+import { polygonCenter, polygonContains } from '../lib/geo';
+import { normalizeRows, parseDownload, parsePlacePage } from '../lib/server/collect';
 
 const now = new Date('2030-01-01T00:00:00Z');
 const startAt = '2030-01-02T01:00:00Z'; // Wednesday 10:00 KST
@@ -175,15 +178,18 @@ test('replacement radius, same category, exclusion, two neighboring legs and dow
   await assert.rejects(replacePlace(course, index, far, catalog, walk));
 });
 
-test('provider XML handles no-route, errors, malformed records and never confirms unknown transit total', () => {
+test('provider XML preserves returned duration, missing time, mode restrictions and errors', () => {
   const wrap = (body: string, code = '0') => `<ServiceResult><msgHeader><headerCd>${code}</headerCd></msgHeader><msgBody>${body}</msgBody></ServiceResult>`;
   assert.equal(parseTransit(wrap('', '7'), places[0], places[1], startAt, normal.constraints, 'bus').status, 'no_route');
   assert.throws(() => parseTransit(wrap('', '1'), places[0], places[1], startAt, normal.constraints, 'bus'));
   assert.throws(() => parseTransit('not xml', places[0], places[1], startAt, normal.constraints, 'bus'));
   const item = '<itemList><distance>500</distance><time>27</time><pathList><routeId>100100047</routeId><routeNm>271</routeNm><fid>1</fid><fname>A</fname><fx>127.05</fx><fy>37.54</fy><tid>2</tid><tname>B</tname><tx>127.06</tx><ty>37.55</ty></pathList></itemList>';
   const leg = parseTransit(wrap(item), places[0], places[1], startAt, constraintsSchema.parse({ modes: ['bus'] }), 'mixed');
-  assert.equal(leg.status, 'ok'); assert.equal(leg.providerMinutes, 27); assert.equal(leg.minutes, null);
-  assert.equal(leg.accessWalkMeters, null);
+  assert.equal(leg.status, 'ok'); assert.equal(leg.providerMinutes, 27); assert.equal(leg.minutes, 27);
+  assert.equal(leg.timingNote, null);
+  assert.equal(parseTransit(wrap(item.replace('<time>27</time>', '')), places[0], places[1], startAt, normal.constraints, 'bus').minutes, null);
+  assert(leg.accessWalkMeters! > 0);
+  assert.equal(leg.accessWalkAccuracy, 'estimated');
   assert.equal(parseTransit(wrap(item), places[0], places[1], startAt, constraintsSchema.parse({ modes: ['subway'] }), 'mixed').status, 'no_route');
 });
 
@@ -276,4 +282,73 @@ test('collector paginates source rows even when an entire page is not Korean', a
   };
   try { assert.equal((await collectSource('TbVwRestaurants')).length, 1); assert.equal(calls, 2); }
   finally { globalThis.fetch = originalFetch; if (key === undefined) delete process.env.SEOUL_API_KEY; else process.env.SEOUL_API_KEY = key; }
+});
+
+test('administrative boundaries reject a real coordinate outside the claimed region and handle holes', () => {
+  assert.equal(locateRegion({lat:37.574, lng:126.990})?.regionId, 'ikseon');
+  assert.equal(placeSchema.safeParse({...places[0], lat:37.574, lng:126.990}).success, false);
+  const square = [[0,0],[4,0],[4,4],[0,4],[0,0]], hole = [[1,1],[3,1],[3,3],[1,3],[1,1]];
+  assert.equal(polygonContains({lat:2,lng:2}, [square,hole]), false);
+  assert.equal(polygonContains({lat:0,lng:2}, [square,hole]), true);
+  assert.deepEqual(polygonCenter([[square]]), {lat:2,lng:2});
+});
+
+test('public dataset download and official place HTML preserve unknowns without inventing coordinates', () => {
+  const row = {post_sn:42,lang_code_id:'ko',post_sj:'카페',post_url:'https://korean.visitseoul.net/test',address:'주소',new_address:null,cmmn_use_time:null};
+  assert.equal(parseDownload({DATA:[row]}, 'TbVwRestaurants')[0].POST_SN, '42');
+  const page = parsePlacePage('<meta name="description" content="조용한 카페 &amp; 전시"><div class="text-type">카페&amp;디저트</div><div data-map-x="127.054" data-map-y="37.544">');
+  assert.deepEqual(page.location, {lat:37.544,lng:127.054});
+  assert.equal(page.category, '카페&디저트');
+  assert.equal(parsePlacePage('<html>삭제된 페이지</html>').location, null);
+});
+
+test('collection uses Visit Seoul coordinates only and rejects missing coordinates without another API', async () => {
+  const originalFetch = globalThis.fetch, urls: string[] = [];
+  globalThis.fetch = async input => {
+    urls.push(String(input));
+    return new Response('<html>좌표 미제공</html>');
+  };
+  try {
+    const rows = parseDownload({DATA:[{post_sn:42,lang_code_id:'ko',post_sj:'카페',
+      post_url:'https://korean.visitseoul.net/test',address:'주소',new_address:''}]}, 'TbVwRestaurants');
+    const result = await normalizeRows(rows, {'TbVwRestaurants:42':{category:'cafe'}});
+    assert.equal(result.places.length, 0);
+    assert.equal(result.rejected.length, 1);
+    assert.deepEqual(urls, ['https://korean.visitseoul.net/test']);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('one public routing API supplies bus, subway and mixed durations for limits and arrivals', async () => {
+  const originalFetch = globalThis.fetch, oldKey = process.env.DATA_GO_KR_KEY;
+  process.env.DATA_GO_KR_KEY = 'test-only';
+  let calls = 0;
+  const path = (subway: boolean) => `<pathList><routeNm>${subway ? '2호선' : '2016'}</routeNm>${subway ? '<railLinkList><railLinkId>1</railLinkId></railLinkList>' : '<routeId>100100522</routeId>'}<fid>1</fid><fname>A</fname><fx>127.05</fx><fy>37.54</fy><tid>2</tid><tname>B</tname><tx>127.06</tx><ty>37.55</ty></pathList>`;
+  globalThis.fetch = async input => {
+    calls++;
+    const url = new URL(String(input));
+    assert.equal(url.hostname, 'ws.bus.go.kr');
+    const kind = url.pathname.split('/').at(-1);
+    const paths = kind === 'getPathInfoBySubway' ? path(true)
+      : kind === 'getPathInfoByBusNSub' ? path(false) + path(true) : path(false);
+    return new Response(`<ServiceResult><msgHeader><headerCd>0</headerCd></msgHeader><msgBody><itemList><distance>1500</distance><time>11</time>${paths}</itemList><itemList><distance>1700</distance><time>15</time>${paths}</itemList></msgBody></ServiceResult>`);
+  };
+  try {
+    for (const modes of [['bus'], ['subway'], ['bus', 'subway']]) {
+      const constraints = constraintsSchema.parse({modes, maxWalkMeters:1, maxTravelMinutes:11});
+      const leg = await getRoute(places[0], places[1], startAt, constraints);
+      assert.equal(leg.minutes, 11);
+      assert.equal(leg.timingNote, null);
+      assert.equal(leg.walkLimit, 'not_applicable');
+      const input = request({counts:{cafe:1,restaurant:1,activity:0}, constraints});
+      const course = summarizeCourse(places.slice(0,2), [leg], input, weather, prefs);
+      assert.equal(course.valid, true);
+      assert.equal(course.totalTravelMinutes, 11);
+      assert.equal(course.visits[1].arrivalAt, new Date(Date.parse(startAt) + 71 * 60000).toISOString());
+      assert.equal(summarizeCourse(places.slice(0,2), [leg], {...input, constraints:{...constraints,maxTravelMinutes:10}}, weather, prefs).travelLimit, 'exceeded');
+    }
+    assert.equal(calls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (oldKey === undefined) delete process.env.DATA_GO_KR_KEY; else process.env.DATA_GO_KR_KEY = oldKey;
+  }
 });

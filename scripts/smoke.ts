@@ -15,7 +15,7 @@ await once(probe, 'listening');
 const port = (probe.address() as { port: number }).port;
 await new Promise<void>(resolve => probe.close(() => resolve()));
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
-  env: { ...process.env, DATA_GO_KR_KEY: '', SEOUL_API_KEY: '', KAKAO_REST_API_KEY: '', NEXT_TELEMETRY_DISABLED: '1' },
+  env: { ...process.env, DATA_GO_KR_KEY: '', SEOUL_API_KEY: '', NEXT_TELEMETRY_DISABLED: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';

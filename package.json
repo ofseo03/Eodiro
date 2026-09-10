@@ -12,6 +12,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:http": "node --import tsx scripts/smoke.ts",
     "collect": "node --env-file-if-exists=.env.local --import tsx scripts/collect.ts",
+    "collect:regions": "node --import tsx scripts/collect-regions.ts",
     "import:places": "node --env-file-if-exists=.env.local --import tsx scripts/import-places.ts"
   },
   "dependencies": {

@@ -41,10 +41,11 @@ export function summarizeCourse(places: Place[], legs: Course['legs'], request: 
   legs.forEach((leg, i) => {
     if (leg.status !== 'ok') violations.push(`${leg.status}:${i}`);
     if (leg.walkLimit === 'estimated_exceeded') violations.push(`walk_limit:${i}`);
+    if (leg.distanceMeters === null && leg.status === 'ok') violations.push(`distance_unknown:${i}`);
   });
   if (travelLimit !== 'met') violations.push(`travel_limit:${travelLimit}`);
   return { visits, legs, weather, request, knownTravelMinutes, totalTravelMinutes: unknown ? null : knownTravelMinutes,
-    travelLimit, includesEstimates: legs.some(l => l.accuracy === 'estimated'), valid: violations.length === 0, violations };
+    travelLimit, includesEstimates: legs.some(l => l.accuracy === 'estimated' || l.accessWalkAccuracy === 'estimated'), valid: violations.length === 0, violations };
 }
 
 // Each tier reserves only the required shortage, so relaxation never displaces a matching place.
