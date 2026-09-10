@@ -204,6 +204,46 @@
 - '취향 초기화' 버튼을 두고, 누르면 확인 후 기기에 저장된 취향과 온보딩 완료 표시를 삭제한다. 삭제 후 홈으로 이동하면 온보딩을 다시 띄운다.
 - 취향이 기기에만 저장되며 다른 기기와 공유되지 않는다는 안내 문구를 표시한다.
 
+### 5.8 디자인 시스템 적용
+
+- 랜딩페이지와 MVP 세 페이지의 시각 언어는 저장소 루트의 `DESIGN.md`를 따르며, 구현은 `design/tokens.css`의 CSS 커스텀 프로퍼티를 사용한다. 두 파일은 함께 수정한다.
+- **랜딩 영역**은 별도 경로가 아니라 홈 `/`의 입력 폼 **위**에 둔다. 첫 방문(온보딩 미완료) 사용자에게는 히어로부터 보이고, 재방문 사용자는 헤더의 '추천받기' 앵커로 폼까지 바로 스크롤한다. 랜딩 섹션 순서: 히어로 → 3열 피처 카드 → 지역 쇼케이스 → 4열 안심 타일 → FAQ → 검정 프로모 스트립 → 푸터.
+- **CTA 색 규칙**: 랜딩(마케팅 표면)의 주 CTA는 검정 필 `button-primary`, 보조는 아웃라인 `button-secondary`다. 코스 요청 폼·결과 페이지·바텀시트(커머스 표면)의 주 CTA('추천받기', '다시 추천', '이 장소 교체', '300m로 넓히기')만 코발트 필 `button-buy-cta`를 쓴다. 코발트는 이 세 표면 밖에 나오지 않는다.
+- **서체**: Optimistic VF는 라이선스가 없어 포함하지 않는다. 배포 서체는 Pretendard Variable이며 폴백은 Montserrat → Helvetica → Arial → Noto Sans KR이다. 모든 heading은 `font-feature-settings: "ss01", "ss02"`를 켠다. 본문 16px/1.50/-0.16px, 보조 14px/1.43/-0.14px.
+- **이미지**: 히어로·지역 쇼케이스 사진은 32px 라운드(`{rounded.xxxl}`) 프레임에 테두리·그림자 없이 넣는다. 히어로는 16:9 이상, 지역 쇼케이스는 4:3, 지역 선택 타일과 장소 썸네일은 1:1에 8px/16px 라운드다. 장소 사진이 없으면 연회색(`{colors.surface-soft}`) 배경 + 카테고리 라인 아이콘으로 대체한다. 사진 위 흰 글자에는 `rgba(10,19,23,0.12)` 오버레이를 깐다. 이미지 파일은 저작권을 확인한 뒤 `public/images/`에 두고 `next/image`로 제공한다.
+
+| 화면 요소 | DESIGN.md 컴포넌트 | 비고 |
+| --- | --- | --- |
+| 헤더 | Top Navigation + `button-icon-circular`(설정) | 하단 내비 없음(5.2). 모바일은 워드마크 + 설정 아이콘만 |
+| 날씨 실내 우선 안내 | `promo-banner-yellow` | 실내 우선 모드일 때만 내비 위에 표시 |
+| 랜딩 히어로 | `hero-band-marketing` | `hero-display` 64px → 36px(<768) → 24px(<480) |
+| 랜딩 피처 카드 | `card-product-feature` ×3 | 날씨 반영 · 이동시간 상한 · 장소 교체 |
+| 지역 쇼케이스 | `card-feature-photo` | 성수·통의·익선·홍대·연남, 카피 좌하단 흰색 |
+| 안심 타일 | `feature-icon-row` (`card-icon-feature` ×4) | 로그인 없음 · 기기 저장 · 공공 데이터 · 택시 없는 코스 우선 |
+| FAQ | `faq-accordion` | |
+| 홈 입력 폼 | `course-request-panel` (`card-checkout-summary` 밀도) | 섹션 제목 `subtitle-lg`, 그룹 간격 20px |
+| 지역 선택 | `region-picker-row` (`color-sku-picker-row`) | 1:1 타일, 선택 시 2px `ink-deep` 테두리 |
+| 방문 날짜·시간, 총 이동시간, 최대 도보 거리 | `text-input` / `-focused` / `-error` | 44px, 오류는 `critical-strong` |
+| 코스 구성(카페·식당·놀거리 개수) | `pill-tab` 스텝퍼 + `badge-neutral` | 최소 2·최대 5 초과 시 `-disabled` |
+| 허용 교통수단 | 체크박스(`fb-blue`) | 택시 기본 꺼짐 |
+| 실내·실외 선호 | `radio-option` / `-selected` | 선택 시 2px `primary-deep` |
+| '추천받기' | `button-buy-cta` 전폭 | |
+| 결과: 지도 | `result-gallery` 좌측, `rounded-xxxl` | 마커 = 32px 원형 순서 번호, 경로선 없음 |
+| 결과: 요약 레일 | `card-checkout-summary` (sticky, max 380px) | <1024px 하단 고정 바(총 이동시간 + '다시 추천') |
+| 결과: 타임라인 | `course-timeline` | 장소 카드 `rounded-xl` → 이동 구간 행 → 장소 카드 |
+| 구간 상태 | `badge-success`(확정 충족·실측) · `badge-attention`(추정·택시 이용 검토) · `badge-critical`(경로 없음·조회 실패) + `button-ghost` 재시도 | |
+| 장소 상태 | `badge-attention`(취향 외·운영시간 미확인·분위기 미확인) · `badge-neutral`(카테고리·실내/실외) | |
+| 날씨 판단 근거 | `tech-specs-table` + `primary-soft` 콜아웃 | 기준 시각·기온·강수확률, 선호 덮어쓴 이유 |
+| 장소 상세 | `place-bottom-sheet` (데스크톱 사이드 패널) | 상단 `rounded-xxl`, 그림자 Level 2, `button-buy-cta` '이 장소 교체' |
+| 교체 후보·반경 확대 | `radio-option` 목록 + `button-buy-cta` '300m로 넓히기' | 500m에도 없으면 `badge-critical` '교체 후보 없음' |
+| 단계별 로딩 | `badge-neutral` 3단계 스텝 + 스켈레톤(`surface-soft`) | 장소 찾는 중 → 날씨 확인 중 → 경로 계산 중 |
+| 전체 오류·조건 없음 | `card-product-feature` 안내 + `button-buy-cta` '다시 시도' / `button-ghost` '홈으로' | |
+| 온보딩 모달 | `card-checkout-summary` 크롬, 취향 칩 `pill-tab`, '건너뛰기' `button-ghost`, '완료' `button-buy-cta` | |
+| 설정 페이지 | 온보딩과 같은 UI + `warranty-card` 기기 저장 안내 + '취향 초기화' `button-secondary` | 초기화 확인은 `badge-critical` 톤 문구 |
+| 푸터 | `footer-region` | 데이터 출처 표기 `caption` `stone` |
+
+- 디자인 미리보기는 `design/preview.html`에서 확인한다. 토큰을 바꾸면 미리보기도 함께 갱신한다.
+
 ## 6. 기술 스택
 
 - **Next.js(App Router) + TypeScript** 단일 저장소로 프론트엔드와 백엔드를 함께 구성한다.
@@ -299,3 +339,6 @@
 | 실내·실외 분류 보완 | 카테고리 기반 자동 추정 후 초기 지역 장소는 수동 보정 |
 | 실제 보행거리 부재 시 | 직선거리 × 1.3 추정, 보행 속도 4km/h 분 단위 올림, '추정' 표시 |
 | 취향 후보 부족 시 | 해당 카테고리 취향 필터만 자동 완화, '취향 외' 표시. 이동·도보·운영시간 조건은 완화 없음 |
+| 디자인 시스템 | Meta 커머스 표면 기반 `DESIGN.md` + `design/tokens.css`. 랜딩은 홈 `/` 상단, 마케팅 CTA 검정 필·커머스 CTA 코발트 필 |
+| 서체 | Pretendard Variable(Optimistic VF 대체), heading에 ss01·ss02, 본문 16px/1.50/-0.16px |
+| 이미지 규격 | 히어로 16:9 이상·지역 쇼케이스 4:3 32px 라운드, 타일·썸네일 1:1 8–16px 라운드, 사진 없으면 연회색 + 아이콘 |
