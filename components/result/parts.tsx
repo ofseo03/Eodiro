@@ -58,14 +58,12 @@ export function Timeline({
               <div className="title">
                 <span className="order">{i + 1}</span>
                 <b className="t-subtitle-lg">{p.name}</b>
-                <span className="t-caption-bold muted">{p.arriveAt} 도착</span>
               </div>
               <div className="badges">
                 <span className={`badge badge-neutral${p.category === "놀거리" ? " badge-purple" : ""}`}>{p.subcategory ? `${p.category} · ${p.subcategory}` : p.category}</span>
                 <span className="badge badge-neutral">{p.indoor}</span>
                 {p.open === true && <span className="badge badge-success">영업 중</span>}
                 {p.open === false && <span className="badge badge-critical">영업 종료</span>}
-                {p.open === null && p.arriveAt === "미정" && <span className="badge badge-attention">도착 미정</span>}
                 {p.flags.map((f) => <span className="badge badge-attention" key={f}>{f}</span>)}
                 {p.moods.slice(0, 1).map((m) => <span className="badge badge-neutral" key={m}>{m}</span>)}
               </div>
@@ -80,7 +78,7 @@ export function Timeline({
               </span>
               {retrying !== i && (
                 <div className="leg-actions" style={{ marginLeft: "auto" }}>
-                  <span className={`badge ${LEG_BADGE[legs[i].status]}`}>{legs[i].status}</span>
+                  {legs[i].status !== "추정" && legs[i].status !== "실측" && <span className={`badge ${LEG_BADGE[legs[i].status]}`}>{legs[i].status}</span>}
                   {legs[i].status === "경로 조회 실패" && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRetry(i)}>재시도</button>
                   )}

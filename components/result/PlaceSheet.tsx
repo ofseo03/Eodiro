@@ -40,7 +40,7 @@ export function PlaceSheet({
         <div className="handle" />
         <div className="sheet-head">
           <div>
-            <span className="t-caption-bold muted">{index + 1}번째 · {place.arriveAt} 도착</span>
+            <span className="t-caption-bold muted">{index + 1}번째</span>
             <h3 className="t-heading-sm" id="sheet-title">{mode === "detail" ? place.name : `${place.name} 교체`}</h3>
           </div>
           <button type="button" className="btn-icon" aria-label="닫기" onClick={onClose}><CloseIcon /></button>
@@ -54,7 +54,6 @@ export function PlaceSheet({
               <div><b>운영시간</b><span>{place.hours ?? "운영시간 미확인"}</span></div>
               <div><b>실내·실외</b><span>{place.indoor}</span></div>
               <div><b>분위기</b><span>{place.moods.length ? place.moods.join(" · ") : "분위기 미확인"}</span></div>
-              <div><b>예상 도착</b><span>{place.arriveAt}</span></div>
             </div>
             <button type="button" className="btn btn-buy-cta btn-full" onClick={() => loadCandidates(100)} disabled={replacing}>이 장소 교체</button>
           </>
