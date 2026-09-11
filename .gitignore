@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.npm-cache/
+.env*
+!.env.example
+data/*.sqlite*
+data/raw/
+*.tsbuildinfo
+.*.tmp
+.smoke-*/
+.test-db-*/
