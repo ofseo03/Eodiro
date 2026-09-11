@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TOWN_COUNT } from "@/data/regions";
 import { ChevronDownIcon, CloudIcon, LockIcon, BusIcon, TaxiIcon } from "@/components/Icons";
+import { Photo } from "@/components/Photo";
 
 /**
  * 랜딩 영역 — 홈 `/` 입력 폼 위에 놓인다(spec 5.8).
@@ -11,7 +12,7 @@ export function Landing() {
   return (
     <>
       <section className="container" style={{ paddingTop: "var(--space-xl)" }} aria-label="소개">
-        <div className="photo hero">
+        <Photo slot="hero" className="hero" priority sizes="(max-width: 1279px) 100vw, 1216px">
           <div>
             <span className="badge badge-promo-yellow">서울 25개 구 · {TOWN_COUNT}개 동네</span>
             <h1 className="t-hero-display">오늘, 어디로 갈까요?</h1>
@@ -23,7 +24,7 @@ export function Landing() {
               <Link className="btn btn-secondary" href="#how">어떻게 추천하나요</Link>
             </div>
           </div>
-        </div>
+        </Photo>
       </section>
 
       <section className="container section" id="how" aria-labelledby="how-title">
@@ -54,9 +55,9 @@ export function Landing() {
         <h2 className="t-heading-lg" id="regions-title">지원 지역</h2>
         <p className="t-heading-md muted section-sub">서울 전역 25개 구, {TOWN_COUNT}개 동네. 이 다섯 곳은 사람이 직접 검수했어요.</p>
         <div className="grid-3">
-          <div className="photo card-feature-photo"><div><h3 className="t-heading-sm">성수 · 서울숲</h3><p className="t-body-sm">성수1가1동 · 성수1가2동 · 성수2가1동 · 성수2가3동</p></div></div>
-          <div className="photo photo-mint card-feature-photo"><div><h3 className="t-heading-sm">서촌 · 익선</h3><p className="t-body-sm">한옥 골목과 갤러리</p></div></div>
-          <div className="photo photo-amber card-feature-photo"><div><h3 className="t-heading-sm">홍대 · 연남</h3><p className="t-body-sm">공연과 경의선숲길</p></div></div>
+          <Photo slot="region-seongsu" className="card-feature-photo" sizes="(max-width: 767px) 100vw, (max-width: 1023px) 50vw, 400px"><div><h3 className="t-heading-sm">성수 · 서울숲</h3><p className="t-body-sm">성수1가1동 · 성수1가2동 · 성수2가1동 · 성수2가3동</p></div></Photo>
+          <Photo slot="region-seochon-ikseon" className="card-feature-photo" sizes="(max-width: 767px) 100vw, (max-width: 1023px) 50vw, 400px"><div><h3 className="t-heading-sm">서촌 · 익선</h3><p className="t-body-sm">한옥 골목과 갤러리</p></div></Photo>
+          <Photo slot="region-hongdae-yeonnam" className="card-feature-photo" sizes="(max-width: 767px) 100vw, (max-width: 1023px) 50vw, 400px"><div><h3 className="t-heading-sm">홍대 · 연남</h3><p className="t-body-sm">공연과 경의선숲길</p></div></Photo>
         </div>
       </section>
 

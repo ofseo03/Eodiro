@@ -64,7 +64,8 @@ export function Timeline({
                 <span className={`badge badge-neutral${p.category === "놀거리" ? " badge-purple" : ""}`}>{p.subcategory ? `${p.category} · ${p.subcategory}` : p.category}</span>
                 <span className="badge badge-neutral">{p.indoor}</span>
                 {p.open === true && <span className="badge badge-success">영업 중</span>}
-                {p.open === null && !p.flags.includes("운영시간 미확인") && <span className="badge badge-attention">운영시간 미확인</span>}
+                {p.open === false && <span className="badge badge-critical">영업 종료</span>}
+                {p.open === null && p.arriveAt === "미정" && <span className="badge badge-attention">도착 미정</span>}
                 {p.flags.map((f) => <span className="badge badge-attention" key={f}>{f}</span>)}
                 {p.moods.slice(0, 1).map((m) => <span className="badge badge-neutral" key={m}>{m}</span>)}
               </div>

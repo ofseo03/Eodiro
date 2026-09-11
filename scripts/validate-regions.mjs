@@ -1,33 +1,31 @@
-// data/regions.ts 의 동네·행정동 배정을 검증한다. 겹치거나 비어 있으면 실패한다.
-// 행정동 코드는 아직 붙이지 않았으므로 지금은 '자치구 내 행정동명 중복'과 '빈 동네'만 검사한다.
+// config/regions.json 의 동네·행정동 배정을 검증한다. 겹치거나 비어 있으면 실패한다.
+// 행정동 코드는 아직 붙이지 않았으므로 '자치구 내 행정동명 중복', '빈 동네', '서울 밖 좌표'를 검사한다.
 import { readFileSync } from "node:fs";
 
-const src = readFileSync(new URL("../data/regions.ts", import.meta.url), "utf8");
-const districts = [...src.matchAll(/\{ name: "([^"]+)", towns: \[\n([\s\S]*?)\n  \] \}/g)].map((m) => ({
-  name: m[1],
-  towns: [...m[2].matchAll(/\{ id: "([^"]+)", name: "([^"]+)", dongs: (\[[^\]]*\]) \}/g)].map((t) => ({
-    id: t[1], name: t[2], dongs: JSON.parse(t[3]),
-  })),
-}));
-
+const regions = JSON.parse(readFileSync(new URL("../config/regions.json", import.meta.url), "utf8"));
 let errors = 0;
+const fail = (msg) => { console.error(msg); errors++; };
+
 const ids = new Set();
-for (const d of districts) {
-  const seen = new Map();
-  for (const t of d.towns) {
-    if (ids.has(t.id)) { console.error(`중복 동네 id: ${t.id}`); errors++; }
-    ids.add(t.id);
-    if (t.dongs.length === 0) { console.error(`행정동이 없는 동네: ${t.id}`); errors++; }
-    for (const dong of t.dongs) {
-      if (seen.has(dong)) { console.error(`${d.name} ${dong} 이(가) ${seen.get(dong)}·${t.name} 두 동네에 배정됨`); errors++; }
-      seen.set(dong, t.name);
-    }
+const seen = new Map(); // `${district}/${dong}` → town
+for (const r of regions) {
+  if (ids.has(r.id)) fail(`중복 동네 id: ${r.id}`);
+  ids.add(r.id);
+  if (!/^[a-z0-9-]+$/.test(r.id)) fail(`id 형식 오류: ${r.id}`);
+  if (!Array.isArray(r.dongs) || r.dongs.length === 0) fail(`행정동이 없는 동네: ${r.id}`);
+  for (const dong of r.dongs) {
+    const key = `${r.district}/${dong}`;
+    if (seen.has(key)) fail(`${key} 이(가) ${seen.get(key)}·${r.name} 두 동네에 배정됨`);
+    seen.set(key, r.name);
   }
+  if (!(r.lat > 37.4 && r.lat < 37.72 && r.lng > 126.75 && r.lng < 127.2)) fail(`서울 밖 좌표: ${r.id} (${r.lat}, ${r.lng})`);
+  if (!["official", "approximate"].includes(r.centerSource)) fail(`centerSource 오류: ${r.id}`);
 }
-const towns = districts.reduce((n, d) => n + d.towns.length, 0);
-const dongs = districts.reduce((n, d) => n + d.towns.reduce((m, t) => m + t.dongs.length, 0), 0);
-if (districts.length !== 25) { console.error(`자치구 수 ${districts.length} ≠ 25`); errors++; }
-if (towns !== 147) { console.error(`동네 수 ${towns} ≠ 147`); errors++; }
-if (dongs !== 426) { console.error(`행정동 수 ${dongs} ≠ 426`); errors++; }
-console.log(`자치구 ${districts.length} · 동네 ${towns} · 행정동 ${dongs}${errors ? ` · 오류 ${errors}` : " · OK"}`);
+const districts = new Set(regions.map((r) => r.district)).size;
+const dongs = regions.reduce((n, r) => n + r.dongs.length, 0);
+if (districts !== 25) fail(`자치구 수 ${districts} ≠ 25`);
+if (regions.length !== 147) fail(`동네 수 ${regions.length} ≠ 147`);
+if (dongs !== 426) fail(`행정동 수 ${dongs} ≠ 426`);
+const approx = regions.filter((r) => r.centerSource === "approximate").length;
+console.log(`자치구 ${districts} · 동네 ${regions.length} · 행정동 ${dongs} · 근사 좌표 ${approx}${errors ? ` · 오류 ${errors}` : " · OK"}`);
 process.exit(errors ? 1 : 0);

@@ -18,7 +18,8 @@
     "collect:regions": "node --import tsx scripts/collect-regions.ts",
     "import:places": "node --env-file-if-exists=.env.local --import tsx scripts/import-places.ts",
     "gen:regions": "node scripts/gen-regions.mjs",
-    "validate:regions": "node scripts/validate-regions.mjs"
+    "validate:regions": "node scripts/validate-regions.mjs",
+    "seed:sample": "node --import tsx scripts/import-places.ts data/sample-places.json"
   },
   "dependencies": {
     "fast-xml-parser": "^5.0.0",

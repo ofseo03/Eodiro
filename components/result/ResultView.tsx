@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CourseMap, LoadingState, Timeline } from "./parts";
 import { PlaceSheet } from "./PlaceSheet";
-import { NoMorePlacesError, STAGES, recommendCourse, recomputeLegsAround, retryLeg, type Candidate, type Stage } from "@/lib/api";
+import { CourseError, STAGES, recommendCourse, replacePlace, retryLeg, type Stage } from "@/lib/api";
 import { formatVisitAt } from "@/lib/format";
 import { clearSeenPlaces, loadLastRequest, loadSeenPlaces, saveSeenPlaces } from "@/lib/storage";
 import { useHydrated, useStored } from "@/lib/useStored";
-import type { Course, CourseRequest, Place } from "@/lib/types";
+import type { Course, CourseRequest } from "@/lib/types";
 
 type State =
   | { kind: "loading"; stage: Stage | null }
-  | { kind: "error"; message: string; exhausted?: boolean }
-  | { kind: "ready"; course: Course };
+  | { kind: "error"; message: string; reason: CourseError["kind"] }
+  | { kind: "ready"; course: Course; notice: string | null };
 
 /**
  * 결과 페이지 `/result` (spec 5.4 · 5.5 · 5.6).
@@ -44,11 +44,11 @@ export function ResultView() {
         });
         if (cancelled) return;
         saveSeenPlaces([...exclude, ...course.places.map((p) => p.id)]);
-        setState({ kind: "ready", course });
+        setState({ kind: "ready", course, notice: null });
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof NoMorePlacesError) setState({ kind: "error", message: "더 이상 새로운 장소가 없습니다", exhausted: true });
-        else setState({ kind: "error", message: err instanceof Error ? err.message : "장소를 불러오지 못했어요." });
+        const e = err instanceof CourseError ? err : new CourseError(err instanceof Error ? err.message : "장소를 불러오지 못했어요.", "network");
+        setState({ kind: "error", message: e.message, reason: e.kind });
       }
     })();
     return () => { cancelled = true; };
@@ -61,30 +61,35 @@ export function ResultView() {
     run(req, exclude);
   }
 
+  function patchCourse(next: Course, notice: string | null = null) {
+    setState({ kind: "ready", course: next, notice });
+  }
+
   async function onRetry(i: number) {
     if (state.kind !== "ready") return;
     setRetrying(i);
-    const leg = await retryLeg(state.course.legs[i]);
-    setState((s) => (s.kind === "ready" ? { kind: "ready", course: recount({ ...s.course, legs: s.course.legs.map((l, k) => (k === i ? leg : l)) }) } : s));
-    setRetrying(null);
+    try {
+      patchCourse(await retryLeg(state.course, i));
+    } catch (err) {
+      patchCourse(state.course, err instanceof Error ? err.message : "구간을 다시 조회하지 못했어요.");
+    } finally {
+      setRetrying(null);
+    }
   }
 
-  async function onReplace(index: number, c: Candidate) {
+  async function onReplace(index: number, candidateId: string, radius: 100 | 300 | 500) {
     if (state.kind !== "ready") return;
     setReplacing(true);
-    const old = state.course.places[index];
-    const replaced: Place = {
-      ...old, id: c.id, name: c.name, address: c.address, hours: c.hours, description: c.description, moods: c.moods,
-      indoor: c.indoor, subcategory: c.subcategory ?? old.subcategory, open: c.open,
-      flags: [...(c.open === null ? ["운영시간 미확인" as const] : []), ...(c.moods.length ? [] : ["분위기 미확인" as const])],
-    };
-    const legs = await recomputeLegsAround(state.course, index);
-    setState((s) => s.kind === "ready"
-      ? { kind: "ready", course: recount({ ...s.course, legs, places: s.course.places.map((p, k) => (k === index ? replaced : p)) }) }
-      : s);
-    saveSeenPlaces([...loadSeenPlaces(), c.id]);
-    setReplacing(false);
-    setActive(null);
+    try {
+      const next = await replacePlace(state.course, index, candidateId, radius);
+      saveSeenPlaces([...loadSeenPlaces(), candidateId]);
+      patchCourse(next, next.allConditionsMet ? null : "교체 후 일부 조건이 벗어났어요. 구간 상태를 확인해 주세요.");
+      setActive(null);
+    } catch (err) {
+      patchCourse(state.course, err instanceof Error ? err.message : "장소를 교체하지 못했어요.");
+    } finally {
+      setReplacing(false);
+    }
   }
 
   if (!hydrated) return <div className="container section-compact"><LoadingState stages={STAGES} current={null} /></div>;
@@ -113,12 +118,14 @@ export function ResultView() {
   }
 
   if (state.kind === "error") {
+    const exhausted = state.reason === "exhausted";
+    const badge = exhausted ? "후보 소진" : state.reason === "catalog" ? "데이터 준비 중" : state.reason === "no_course" ? "조건 없음" : "오류";
     return (
       <div className="container section-compact">
         <div className="card-product-feature state-card">
-          <span className="badge badge-critical">{state.exhausted ? "후보 소진" : "오류"}</span>
+          <span className="badge badge-critical">{badge}</span>
           <h1 className="t-heading-md" style={{ marginTop: "var(--space-base)" }}>{state.message}</h1>
-          {state.exhausted ? (
+          {exhausted ? (
             <>
               <p className="t-body-md charcoal">이번 세션에서 이미 보여 드린 장소를 빼면 남은 후보가 없어요. 제외 목록을 초기화하고 다시 받을까요?</p>
               <div className="row" style={{ justifyContent: "center" }}>
@@ -126,17 +133,28 @@ export function ResultView() {
                 <Link className="btn btn-ghost" href="/#request">조건 바꾸기</Link>
               </div>
             </>
+          ) : state.reason === "catalog" ? (
+            <>
+              <p className="t-body-md charcoal">지금은 우선 검수 지역(성수·서촌·익선·홍대·연남)부터 장소를 채우고 있어요. 다른 동네를 골라 보세요.</p>
+              <div className="row" style={{ justifyContent: "center" }}>
+                <Link className="btn btn-buy-cta" href="/#request">다른 동네 고르기</Link>
+                <button type="button" className="btn btn-ghost" onClick={() => rerun(loadSeenPlaces())}>다시 시도</button>
+              </div>
+            </>
           ) : (
             <>
-              <p className="t-body-md charcoal">조건에 맞는 코스를 찾지 못했어요. 이렇게 바꿔 보세요.</p>
+              <p className="t-body-md charcoal">
+                {state.reason === "no_course" || state.reason === "search_limit" ? "조건에 맞는 코스를 찾지 못했어요. 이렇게 바꿔 보세요." : "잠시 후 다시 시도해 주세요. 계속 안 되면 조건을 바꿔 보세요."}
+              </p>
               <ul>
                 <li>구간별 최대 도보 거리를 늘리기</li>
                 <li>총 이동시간 상한을 늘리기</li>
                 <li>허용 교통수단 추가하기</li>
+                {state.reason === "search_limit" && <li>장소 수를 줄이기</li>}
               </ul>
               <div className="row" style={{ justifyContent: "center" }}>
                 <button type="button" className="btn btn-buy-cta" onClick={() => rerun(loadSeenPlaces())}>다시 시도</button>
-                <Link className="btn btn-ghost" href="/">홈으로</Link>
+                <Link className="btn btn-ghost" href="/#request">홈으로</Link>
               </div>
             </>
           )}
@@ -145,7 +163,7 @@ export function ResultView() {
     );
   }
 
-  const { course } = state;
+  const { course, notice } = state;
   const w = course.weather;
   const activePlace = active !== null ? course.places[active] : null;
 
@@ -153,7 +171,7 @@ export function ResultView() {
     <>
       {w.indoorPriority && (
         <div className="promo-banner promo-banner-yellow" role="status">
-          오늘 {w.baseTime} {course.townName.split("·")[0]} 강수확률 {w.rainPct}% · 실내 위주로 추천해요
+          {w.baseTime} {course.townName.split("·")[0]} · {w.tempC !== null ? `${w.tempC}°C · ` : ""}강수확률 {w.rainPct ?? "-"}% · 실내 위주로 추천해요
         </div>
       )}
       <div className="container section-compact">
@@ -163,11 +181,14 @@ export function ResultView() {
         <div className="result-head">
           <h1 className="t-heading-md">{course.title}</h1>
           <div className="row" style={{ gap: "var(--space-xs)" }}>
-            {course.allConditionsMet ? <span className="badge badge-success">조건 충족</span> : <span className="badge badge-attention">일부 구간 미확인</span>}
+            {course.allConditionsMet && !course.includesEstimates && <span className="badge badge-success">조건 충족</span>}
+            {course.allConditionsMet && course.includesEstimates && <span className="badge badge-attention">추정 포함</span>}
+            {!course.allConditionsMet && <span className="badge badge-attention">일부 조건 미확인</span>}
             {w.indoorPriority && <span className="badge badge-attention">실내 우선</span>}
             {!w.reflected && <span className="badge badge-neutral">날씨 미반영</span>}
           </div>
         </div>
+        {notice && <div className="callout" role="status" style={{ marginBottom: "var(--space-xl)" }}>{notice}</div>}
 
         <div className="result-grid">
           <div className="stack" style={{ gap: "var(--space-xl)" }}>
@@ -193,9 +214,9 @@ export function ResultView() {
             {activePlace && (
               <PlaceSheet
                 key={activePlace.id}
+                course={course}
                 place={activePlace}
                 index={active!}
-                excludeIds={course.places.map((p) => p.id)}
                 replacing={replacing}
                 onClose={() => setActive(null)}
                 onReplace={onReplace}
@@ -214,16 +235,4 @@ export function ResultView() {
       </div>
     </>
   );
-}
-
-/** 구간이 바뀐 뒤 요약 수치를 다시 계산한다. */
-function recount(c: Course): Course {
-  const confirmed = c.legs.filter((l) => l.status === "실측" || l.status === "확정 충족").length;
-  const failed = c.legs.some((l) => l.status === "경로 없음" || l.status === "경로 조회 실패");
-  return {
-    ...c,
-    confirmedLegs: confirmed,
-    totalMinutes: c.legs.reduce((n, l) => n + (l.minutes ?? 0), 0),
-    allConditionsMet: !failed && confirmed === c.legs.length,
-  };
 }
