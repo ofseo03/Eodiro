@@ -354,7 +354,7 @@ Optimistic VF는 Meta 전용 서체라 배포할 수 없으므로 **Pretendard V
 ## Known Gaps
 
 - Optimistic VF 라이선스가 없으므로 Pretendard Variable로 대체한다. Pretendard의 `ss01`·`ss02`는 Optimistic의 alternates와 다르지만 헤딩 규칙은 유지한다.
-- 토큰의 실제 HEX 값은 meta.com 캡처 기준의 근사값이다. 대비 검사는 `design` 브랜치의 `design/tokens.css` 기준으로 통과 여부를 확인한다.
+- 토큰의 실제 HEX 값은 meta.com 캡처 기준의 근사값이다. 대비 검사는 `design/tokens.css` 기준으로 통과 여부를 확인한다.
 - 토글·다중 선택 체크 상태는 `radio-option-selected`의 코발트-온-화이트 규칙을 따라 구현한다.
 - 애니메이션: 주요 표면 전환 150–250ms ease-out, 아코디언·바텀시트 300ms ease-in-out.
 - 다크 모드 토큰은 정의하지 않는다. MVP는 라이트 전용이다.

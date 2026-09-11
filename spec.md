@@ -211,7 +211,7 @@
 
 ### 5.8 디자인 시스템 적용
 
-- 랜딩페이지와 MVP 세 페이지의 시각 언어는 저장소 루트의 `DESIGN.md`를 따르며, 구현은 `design` 브랜치의 `design/tokens.css`의 CSS 커스텀 프로퍼티를 사용한다. 두 파일은 함께 수정한다.
+- 랜딩페이지와 MVP 세 페이지의 시각 언어는 저장소 루트의 `DESIGN.md`를 따르며, 구현은 `design/tokens.css`의 CSS 커스텀 프로퍼티를 사용한다. 두 파일은 함께 수정한다.
 - **랜딩 영역**은 별도 경로가 아니라 홈 `/`의 입력 폼 **위**에 둔다. 첫 방문(온보딩 미완료) 사용자에게는 히어로부터 보이고, 재방문 사용자는 헤더의 '추천받기' 앵커로 폼까지 바로 스크롤한다. 랜딩 섹션 순서: 히어로 → 3열 피처 카드 → 지역 쇼케이스 → 4열 안심 타일 → FAQ → 검정 프로모 스트립 → 푸터.
 - **CTA 색 규칙**: 랜딩(마케팅 표면)의 주 CTA는 검정 필 `button-primary`, 보조는 아웃라인 `button-secondary`다. 코스 요청 폼·결과 페이지·바텀시트(커머스 표면)의 주 CTA('추천받기', '다시 추천', '이 장소 교체', '300m로 넓히기')만 코발트 필 `button-buy-cta`를 쓴다. 코발트는 이 세 표면 밖에 나오지 않는다.
 - **서체**: Optimistic VF는 라이선스가 없어 포함하지 않는다. 배포 서체는 Pretendard Variable이며 폴백은 Montserrat → Helvetica → Arial → Noto Sans KR이다. 모든 heading은 `font-feature-settings: "ss01", "ss02"`를 켠다. 본문 16px/1.50/-0.16px, 보조 14px/1.43/-0.14px.
@@ -247,7 +247,7 @@
 | 설정 페이지 | 온보딩과 같은 UI + `warranty-card` 기기 저장 안내 + '취향 초기화' `button-secondary` | 초기화 확인은 `badge-critical` 톤 문구 |
 | 푸터 | `footer-region` | 데이터 출처 표기 `caption` `stone` |
 
-- 디자인 미리보기는 `design` 브랜치의 `design/preview.html`에서 확인한다. 토큰을 바꾸면 미리보기도 함께 갱신한다.
+- 디자인 미리보기는 `design/preview.html`에서 확인한다. 토큰을 바꾸면 미리보기도 함께 갱신한다.
 
 ## 6. 기술 스택
 
@@ -346,7 +346,7 @@
 | 실내·실외 분류 보완 | 카테고리 기반 자동 추정 후 우선 검수 지역 장소는 수동 보정 |
 | 실제 보행거리 부재 시 | 직선거리 × 1.3 추정, 보행 속도 4km/h 분 단위 올림, '추정' 표시 |
 | 취향 후보 부족 시 | 해당 카테고리 취향 필터만 자동 완화, '취향 외' 표시. 이동·도보·운영시간 조건은 완화 없음 |
-| 디자인 시스템 | Meta 커머스 표면 기반 `DESIGN.md` + `design/tokens.css`(`design` 브랜치). 랜딩은 홈 `/` 상단, 마케팅 CTA 검정 필·커머스 CTA 코발트 필 |
+| 디자인 시스템 | Meta 커머스 표면 기반 `DESIGN.md` + `design/tokens.css`. 랜딩은 홈 `/` 상단, 마케팅 CTA 검정 필·커머스 CTA 코발트 필 |
 | 서체 | Pretendard Variable(Optimistic VF 대체), heading에 ss01·ss02, 본문 16px/1.50/-0.16px |
 | 이미지 규격 | 히어로 16:9 이상·지역 쇼케이스 4:3 32px 라운드, 타일·썸네일 1:1 8–16px 라운드, 사진 없으면 연회색 + 아이콘 |
 
