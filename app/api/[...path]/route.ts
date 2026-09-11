@@ -6,6 +6,7 @@ import { preferencesSchema } from '../../../lib/contracts';
 import { readPlaces } from '../../../lib/server/db';
 import { getWeather } from '../../../lib/server/weather';
 import { getRoute } from '../../../lib/server/routes';
+import { getKakaoMapConfig, kakaoGeocode, kakaoGeocodeQuerySchema, kakaoReverseGeocode, kakaoReverseGeocodeQuerySchema, KakaoMapError } from '../../../lib/server/kakao-map';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,7 @@ async function handle(run: () => Promise<Response>) {
   try { return await run(); }
   catch (error) {
     if (error instanceof ZodError) return json({ error: { code: 'INVALID_INPUT', message: '입력값을 확인하세요', fields: error.issues.map(i => ({ path: i.path.join('.'), message: i.message })) } }, 400);
-    if (error instanceof ApiError) return json({ error: { code: error.code, message: error.message } }, error.status);
+    if (error instanceof ApiError || error instanceof KakaoMapError) return json({ error: { code: error.code, message: error.message } }, error.status);
     return json({ error: { code: 'INTERNAL_ERROR', message: '서버 처리에 실패했습니다' } }, 500);
   }
 }
@@ -62,7 +63,12 @@ export async function GET(request: Request, context: Context) {
       transit: { configured: Boolean(process.env.DATA_GO_KR_KEY), liveVerified: false,
         source: 'seoul_transit', timing: 'provider_duration' },
       taxi: { status: 'review_only', minutes: null },
+      geocoding: { configured: Boolean(process.env.KAKAO_REST_API_KEY), source: 'kakao', liveVerified: false },
+      map: { configured: Boolean(process.env.KAKAO_JAVASCRIPT_KEY), source: 'kakao', liveVerified: false },
     });
+    if (path === 'map/config') { z.strictObject({}).parse(params); return json(getKakaoMapConfig()); }
+    if (path === 'map/geocode') return json(await kakaoGeocode(kakaoGeocodeQuerySchema.parse(params)));
+    if (path === 'map/reverse-geocode') return json(await kakaoReverseGeocode(kakaoReverseGeocodeQuerySchema.parse(params)));
     if (path === 'places') {
       const { regionId } = z.strictObject({ regionId: regionIdSchema }).parse(params);
       return json({ places: placesFor(regionId) });
