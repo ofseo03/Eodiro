@@ -19,7 +19,8 @@ async function main() {
   const result = await normalizeRows(rows, classification.overrides);
   await writeFile('data/raw/rejected.json', JSON.stringify(result.rejected, null, 2));
   if (!result.places.length) throw new Error('검수된 서비스 지역 장소가 없습니다. 기존 DB를 유지합니다');
-  for (const region of regions) for (const category of ['cafe', 'restaurant', 'activity']) {
+  // 우선 검수 지역은 세 카테고리가 모두 있어야 한다. 그 밖의 동네는 부족해도 저장하고 홈에서 회색으로 표시한다(spec 2.3).
+  for (const region of regions.filter(r => r.priority)) for (const category of ['cafe', 'restaurant', 'activity']) {
     if (!result.places.some(p => p.regionId === region.id && p.category === category)) {
       throw new Error(`${region.name} ${category} 후보가 없습니다. 기존 DB를 유지합니다`);
     }

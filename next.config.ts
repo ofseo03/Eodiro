@@ -1,7 +1,8 @@
-import type { NextConfig } from 'next';
+import type { NextConfig } from "next";
 
 const config: NextConfig = {
+  reactStrictMode: true,
   poweredByHeader: false,
-  serverExternalPackages: ['node:sqlite'],
+  serverExternalPackages: ["node:sqlite"],
 };
 export default config;

@@ -1,6 +1,7 @@
 node_modules/
 .next/
 .npm-cache/
+out/
 .env*
 !.env.example
 data/*.sqlite*
@@ -9,3 +10,4 @@ data/raw/
 .*.tmp
 .smoke-*/
 .test-db-*/
+.DS_Store

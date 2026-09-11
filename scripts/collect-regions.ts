@@ -19,7 +19,7 @@ const features = regions.flatMap(region => region.dongs.map(dong => {
   return { type: 'Feature', properties: { regionId: region.id, district: region.district, dong }, geometry: matches[0].geometry };
 }));
 const updated = regions.map(region => ({ ...region,
-  ...polygonCenter(features.filter(f => f.properties.regionId === region.id).map(f => f.geometry.coordinates)) }));
+  ...polygonCenter(features.filter(f => f.properties.regionId === region.id).map(f => f.geometry.coordinates)), centerSource: 'official' }));
 await writeFile('config/region-boundaries.json.tmp', JSON.stringify({type: 'FeatureCollection', source, features}));
 await writeFile('config/regions.json.tmp', '[\n' + updated.map(r => '  ' + JSON.stringify(r)).join(',\n') + '\n]\n');
 await rename('config/region-boundaries.json.tmp', 'config/region-boundaries.json');
