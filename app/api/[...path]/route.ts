@@ -3,7 +3,7 @@ import { z, ZodError } from 'zod';
 import { constraintsSchema, dateTimeSchema, regionIdSchema, regions, requestSchema } from '../../../lib/contracts';
 import { summarizeCourse } from '../../../lib/course';
 import { preferencesSchema } from '../../../lib/contracts';
-import { readPlaces } from '../../../lib/server/db';
+import { countPlacesByRegion, readPlaces } from '../../../lib/server/db';
 import { getWeather } from '../../../lib/server/weather';
 import { getRoute } from '../../../lib/server/routes';
 
@@ -54,7 +54,12 @@ export async function GET(request: Request, context: Context) {
     const path = (await context.params).path.join('/');
     const params = Object.fromEntries(new URL(request.url).searchParams);
     if (path === 'health') return json({ status: 'ok' });
-    if (path === 'regions') return json({ regions });
+    if (path === 'regions') {
+      // 후보 수는 안내용이다. 조회에 실패해도 지역 목록은 돌려주고, 후보 수는 비운다.
+      let availability: ReturnType<typeof countPlacesByRegion> = {};
+      try { availability = countPlacesByRegion(); } catch { /* 장소 캐시 없음 */ }
+      return json({ regions: regions.map(r => ({ ...r, availability: availability[r.id] ?? { cafe: 0, restaurant: 0, activity: 0 } })) });
+    }
     if (path === 'capabilities') return json({
       walking: { status: 'implemented', accuracy: 'estimated', factor: 1.3, speedKmh: 4 },
       places: { configured: true, source: 'visit_seoul', publicDownload: true },

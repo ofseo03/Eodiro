@@ -1,4 +1,4 @@
-export async function fetchText(url: URL, headers?: HeadersInit, body?: URLSearchParams) {
+export async function fetchText(url: URL, headers?: HeadersInit, body?: URLSearchParams | string) {
   const response = await fetch(url, { headers, body, method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'error' });
   if (!response.ok) throw new Error('외부 API 응답 오류');
   const reader = response.body?.getReader();
@@ -15,6 +15,6 @@ export async function fetchText(url: URL, headers?: HeadersInit, body?: URLSearc
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export async function fetchJson(url: URL, headers?: HeadersInit, body?: URLSearchParams): Promise<unknown> {
+export async function fetchJson(url: URL, headers?: HeadersInit, body?: URLSearchParams | string): Promise<unknown> {
   return JSON.parse(await fetchText(url, headers, body));
 }

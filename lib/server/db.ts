@@ -19,6 +19,22 @@ export function readPlaces(regionId: string): Place[] {
   } finally { db.close(); }
 }
 
+export type Availability = Record<string, { cafe: number; restaurant: number; activity: number }>;
+
+/** 동네별 카테고리 후보 수 (spec 2.3: 하나라도 0인 동네는 선택 불가). */
+export function countPlacesByRegion(): Availability {
+  const db = openDb();
+  try {
+    const counts: Availability = {};
+    for (const row of db.prepare("SELECT region_id AS regionId, json_extract(payload, '$.category') AS category, COUNT(*) AS n FROM places GROUP BY region_id, category").all()) {
+      const regionId = String(row.regionId), category = String(row.category);
+      counts[regionId] ??= { cafe: 0, restaurant: 0, activity: 0 };
+      if (category === 'cafe' || category === 'restaurant' || category === 'activity') counts[regionId][category] = Number(row.n);
+    }
+    return counts;
+  } finally { db.close(); }
+}
+
 export function replaceCatalog(input: unknown) {
   const places = placeSchema.array().min(1).parse(input);
   if (new Set(places.map(p => p.id)).size !== places.length) throw new Error('중복 장소 ID');
