@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { RegionPicker } from "./RegionPicker";
 import { CheckIcon } from "@/components/Icons";
 import { nowLocalInput } from "@/lib/format";
 import { clearSeenPlaces, loadLastRequest, loadPreferences, saveLastRequest } from "@/lib/storage";
+import { useHydrated, useStored } from "@/lib/useStored";
 import {
   CATEGORIES, INDOOR_PREFS, MAX_PLACES, MAX_WALK_METERS, MIN_PLACES,
-  type Category, type CourseRequest, type IndoorPref,
+  DEFAULT_PREFERENCES, type Category, type CourseRequest, type IndoorPref,
 } from "@/lib/types";
 
 /**
@@ -21,7 +22,7 @@ import {
 function defaultRequest(): CourseRequest {
   return {
     townId: null,
-    visitAt: nowLocalInput(30),
+    visitAt: "",
     composition: { 카페: 1, 식당: 1, 놀거리: 1 },
     maxTravelMinutes: 60,
     transport: { bus: true, subway: true, walk: true, taxi: false },
@@ -50,28 +51,27 @@ function validate(r: CourseRequest): Errors {
 
 export function CourseRequestForm() {
   const router = useRouter();
-  const [req, setReq] = useState<CourseRequest>(defaultRequest);
+  // 마지막 입력값과 취향(실내·실외 선호)은 저장소에서 읽고, 이번 세션의 수정분만 state로 둔다.
+  const hydrated = useHydrated();
+  // 현재 시각(분 단위)도 스냅숏으로 읽어 서버 렌더에서는 비워 둔다.
+  const nowInput = useStored(() => nowLocalInput(), "");
+  const defaultVisitAt = useStored(() => nowLocalInput(30), "");
+  const last = useStored(loadLastRequest, null);
+  const prefs = useStored(loadPreferences, DEFAULT_PREFERENCES);
+  const [edits, setEdits] = useState<Partial<CourseRequest>>({});
   const [errors, setErrors] = useState<Errors>({});
-  const [restored, setRestored] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // 마지막 입력값과 취향(실내·실외 선호)을 기기에서 복원한다.
-  useEffect(() => {
-    const last = loadLastRequest();
-    const prefs = loadPreferences();
-    setReq((cur) => {
-      const base = last ? { ...cur, ...last } : { ...cur, indoor: prefs.indoor };
-      // 지난 방문 시각이 이미 지났으면 현재 기준으로 되돌린다.
-      if (new Date(base.visitAt).getTime() < Date.now()) base.visitAt = nowLocalInput(30);
-      return base;
-    });
-    setRestored(Boolean(last));
-  }, []);
+  const base: CourseRequest = { ...defaultRequest(), ...(last ?? { indoor: prefs.indoor }) };
+  const req: CourseRequest = { ...base, ...edits };
+  // 방문 시각이 비었거나 이미 지났으면 현재 기준으로 채운다(서버 렌더에서는 비워 둔다).
+  if (hydrated && (!req.visitAt || req.visitAt < nowInput)) req.visitAt = defaultVisitAt;
+  const restored = Boolean(last);
 
   const total = CATEGORIES.reduce((n, c) => n + req.composition[c], 0);
 
   function patch(p: Partial<CourseRequest>) {
-    setReq((cur) => ({ ...cur, ...p }));
+    setEdits((cur) => ({ ...cur, ...p }));
   }
   function step(cat: Category, delta: 1 | -1) {
     const next = Math.max(0, req.composition[cat] + delta);
@@ -112,7 +112,7 @@ export function CourseRequestForm() {
             className="text-input"
             type="datetime-local"
             value={req.visitAt}
-            min={nowLocalInput()}
+            min={nowInput || undefined}
             aria-invalid={errors.visitAt ? "true" : undefined}
             onChange={(e) => patch({ visitAt: e.target.value })}
           />

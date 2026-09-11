@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PreferencesFields } from "./PreferencesFields";
 import { loadPreferences, resetPreferences, savePreferences } from "@/lib/storage";
+import { useStored } from "@/lib/useStored";
 import { DEFAULT_PREFERENCES, type Preferences } from "@/lib/types";
 
 /**
@@ -11,22 +12,18 @@ import { DEFAULT_PREFERENCES, type Preferences } from "@/lib/types";
  */
 export function SettingsView() {
   const router = useRouter();
-  const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFERENCES);
+  const prefs = useStored(loadPreferences, DEFAULT_PREFERENCES);
   const [confirming, setConfirming] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { setPrefs(loadPreferences()); }, []);
-
   function update(next: Preferences) {
-    setPrefs(next);
-    savePreferences(next);
+    savePreferences(next); // 저장소가 바뀌면 useStored 가 다시 렌더한다.
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1500);
   }
 
   function reset() {
     resetPreferences();
-    setPrefs(DEFAULT_PREFERENCES);
     setConfirming(false);
     router.push("/"); // 홈으로 가면 온보딩이 다시 뜬다.
   }

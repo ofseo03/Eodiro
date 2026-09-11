@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CloseIcon } from "@/components/Icons";
 import { fetchReplacements, type Candidate } from "@/lib/api";
 import type { Place } from "@/lib/types";
@@ -18,21 +18,19 @@ export function PlaceSheet({
   place: Place; index: number; excludeIds: string[]; replacing: boolean;
   onClose: () => void; onReplace: (index: number, candidate: Candidate) => void;
 }) {
+  // 부모가 key={place.id} 로 마운트하므로 장소가 바뀌면 상태가 초기화된다.
   const [mode, setMode] = useState<"detail" | "replace">("detail");
   const [radius, setRadius] = useState<Radius>(100);
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null); // null = 조회 중
   const [picked, setPicked] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => { setMode("detail"); setRadius(100); setCandidates(null); setPicked(null); }, [place.id]);
-
-  useEffect(() => {
-    if (mode !== "replace") return;
-    let alive = true;
-    setLoading(true);
-    fetchReplacements(place, radius, excludeIds).then((c) => { if (alive) { setCandidates(c); setLoading(false); } });
-    return () => { alive = false; };
-  }, [mode, radius, place, excludeIds]);
+  function loadCandidates(r: Radius) {
+    setMode("replace");
+    setRadius(r);
+    setCandidates(null);
+    setPicked(null);
+    void fetchReplacements(place, r, excludeIds).then(setCandidates);
+  }
 
   const next = NEXT_RADIUS[radius];
 
@@ -59,19 +57,19 @@ export function PlaceSheet({
               <div><b>분위기</b><span>{place.moods.length ? place.moods.join(" · ") : "분위기 미확인"}</span></div>
               <div><b>예상 도착</b><span>{place.arriveAt}</span></div>
             </div>
-            <button type="button" className="btn btn-buy-cta btn-full" onClick={() => setMode("replace")} disabled={replacing}>이 장소 교체</button>
+            <button type="button" className="btn btn-buy-cta btn-full" onClick={() => loadCandidates(100)} disabled={replacing}>이 장소 교체</button>
           </>
         ) : (
           <>
             <p className="t-body-sm muted desc">반경 {radius}m 안 같은 카테고리({place.category}) 장소예요. 고르면 앞뒤 구간을 다시 계산해요.</p>
-            {loading || candidates === null ? (
+            {candidates === null ? (
               <div className="stack" style={{ gap: "var(--space-xs)" }} aria-busy="true"><div className="skeleton" style={{ height: 64 }} /><div className="skeleton" style={{ height: 64 }} /></div>
             ) : candidates.length === 0 ? (
               <div className="stack" style={{ gap: "var(--space-md)" }}>
                 {next ? (
                   <>
                     <span className="badge badge-attention" style={{ justifySelf: "start" }}>반경 {radius}m 내 교체 후보 없음</span>
-                    <button type="button" className="btn btn-buy-cta btn-full" style={{ marginTop: 0 }} onClick={() => setRadius(next)}>{next}m로 넓히기</button>
+                    <button type="button" className="btn btn-buy-cta btn-full" style={{ marginTop: 0 }} onClick={() => loadCandidates(next)}>{next}m로 넓히기</button>
                   </>
                 ) : (
                   <span className="badge badge-critical" style={{ justifySelf: "start" }}>교체 후보 없음</span>

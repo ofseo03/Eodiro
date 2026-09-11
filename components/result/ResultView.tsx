@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CourseMap, LoadingState, Timeline } from "./parts";
 import { PlaceSheet } from "./PlaceSheet";
 import { NoMorePlacesError, STAGES, recommendCourse, recomputeLegsAround, retryLeg, type Candidate, type Stage } from "@/lib/api";
 import { formatVisitAt } from "@/lib/format";
 import { clearSeenPlaces, loadLastRequest, loadSeenPlaces, saveSeenPlaces } from "@/lib/storage";
+import { useHydrated, useStored } from "@/lib/useStored";
 import type { Course, CourseRequest, Place } from "@/lib/types";
 
 type State =
-  | { kind: "idle" }
-  | { kind: "no-request" }
   | { kind: "loading"; stage: Stage | null }
   | { kind: "error"; message: string; exhausted?: boolean }
   | { kind: "ready"; course: Course };
@@ -21,33 +20,46 @@ type State =
  * 상단 지도 + 하단 타임라인, 우측 sticky 요약 레일(<1024px 하단 고정 바), 장소 상세 시트.
  */
 export function ResultView() {
-  const [state, setState] = useState<State>({ kind: "idle" });
+  const hydrated = useHydrated();
+  const req = useStored(loadLastRequest, null);
+  const [state, setState] = useState<State>({ kind: "loading", stage: null });
   const [active, setActive] = useState<number | null>(null);
   const [retrying, setRetrying] = useState<number | null>(null);
   const [replacing, setReplacing] = useState(false);
-  const reqRef = useRef<CourseRequest | null>(null);
 
-  const run = useCallback(async (exclude: string[]) => {
-    const req = reqRef.current;
+  // 첫 조회: 저장된 요청이 준비되면 한 번 실행한다. 재조회는 버튼 핸들러에서 run() 을 부른다.
+  useEffect(() => {
+    if (!req?.townId) return;
+    return run(req, []);
+  }, [req]);
+
+  /** 코스 계산. 취소 함수를 돌려주므로 effect 정리에 그대로 쓸 수 있다. */
+  function run(request: CourseRequest, exclude: string[]) {
+    let cancelled = false;
+    (async () => {
+      try {
+        const course = await recommendCourse(request, {
+          exclude,
+          onStage: (stage) => { if (!cancelled) setState({ kind: "loading", stage }); },
+        });
+        if (cancelled) return;
+        saveSeenPlaces([...exclude, ...course.places.map((p) => p.id)]);
+        setState({ kind: "ready", course });
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof NoMorePlacesError) setState({ kind: "error", message: "더 이상 새로운 장소가 없습니다", exhausted: true });
+        else setState({ kind: "error", message: err instanceof Error ? err.message : "장소를 불러오지 못했어요." });
+      }
+    })();
+    return () => { cancelled = true; };
+  }
+
+  function rerun(exclude: string[]) {
     if (!req) return;
     setActive(null);
     setState({ kind: "loading", stage: null });
-    try {
-      const course = await recommendCourse(req, { exclude, onStage: (stage) => setState({ kind: "loading", stage }) });
-      saveSeenPlaces([...exclude, ...course.places.map((p) => p.id)]);
-      setState({ kind: "ready", course });
-    } catch (err) {
-      if (err instanceof NoMorePlacesError) setState({ kind: "error", message: "더 이상 새로운 장소가 없습니다", exhausted: true });
-      else setState({ kind: "error", message: err instanceof Error ? err.message : "장소를 불러오지 못했어요." });
-    }
-  }, []);
-
-  useEffect(() => {
-    const req = loadLastRequest();
-    if (!req || !req.townId) { setState({ kind: "no-request" }); return; }
-    reqRef.current = req;
-    void run([]);
-  }, [run]);
+    run(req, exclude);
+  }
 
   async function onRetry(i: number) {
     if (state.kind !== "ready") return;
@@ -75,9 +87,9 @@ export function ResultView() {
     setActive(null);
   }
 
-  if (state.kind === "idle") return <div className="container section-compact"><LoadingState stages={STAGES} current={null} /></div>;
+  if (!hydrated) return <div className="container section-compact"><LoadingState stages={STAGES} current={null} /></div>;
 
-  if (state.kind === "no-request") {
+  if (!req?.townId) {
     return (
       <div className="container section-compact">
         <div className="card-product-feature state-card">
@@ -88,8 +100,6 @@ export function ResultView() {
       </div>
     );
   }
-
-  const req = reqRef.current!;
 
   if (state.kind === "loading") {
     return (
@@ -112,7 +122,7 @@ export function ResultView() {
             <>
               <p className="t-body-md charcoal">이번 세션에서 이미 보여 드린 장소를 빼면 남은 후보가 없어요. 제외 목록을 초기화하고 다시 받을까요?</p>
               <div className="row" style={{ justifyContent: "center" }}>
-                <button type="button" className="btn btn-buy-cta" onClick={() => { clearSeenPlaces(); void run([]); }}>제외 목록 초기화 후 다시 추천</button>
+                <button type="button" className="btn btn-buy-cta" onClick={() => { clearSeenPlaces(); rerun([]); }}>제외 목록 초기화 후 다시 추천</button>
                 <Link className="btn btn-ghost" href="/#request">조건 바꾸기</Link>
               </div>
             </>
@@ -125,7 +135,7 @@ export function ResultView() {
                 <li>허용 교통수단 추가하기</li>
               </ul>
               <div className="row" style={{ justifyContent: "center" }}>
-                <button type="button" className="btn btn-buy-cta" onClick={() => void run(loadSeenPlaces())}>다시 시도</button>
+                <button type="button" className="btn btn-buy-cta" onClick={() => rerun(loadSeenPlaces())}>다시 시도</button>
                 <Link className="btn btn-ghost" href="/">홈으로</Link>
               </div>
             </>
@@ -176,12 +186,13 @@ export function ResultView() {
                 <dd>{w.reflected ? `${w.baseTime} · ${w.tempC}°C · 강수 ${w.rainPct}%` : "날씨 미반영"}</dd>
               </dl>
               {w.overrideReason && <div className="callout">{w.overrideReason}</div>}
-              <button type="button" className="btn btn-buy-cta btn-full" onClick={() => void run(loadSeenPlaces())}>다시 추천</button>
+              <button type="button" className="btn btn-buy-cta btn-full" onClick={() => rerun(loadSeenPlaces())}>다시 추천</button>
               <Link className="btn btn-ghost btn-full" href="/#request">조건 바꾸기</Link>
             </div>
 
             {activePlace && (
               <PlaceSheet
+                key={activePlace.id}
                 place={activePlace}
                 index={active!}
                 excludeIds={course.places.map((p) => p.id)}
@@ -199,7 +210,7 @@ export function ResultView() {
           <div className="t-body-sm-bold">총 {course.totalMinutes}분 <span className="muted" style={{ fontWeight: 400 }}>/ {course.maxTravelMinutes}분</span></div>
           <div className="t-caption muted">확인된 구간 {course.confirmedLegs}/{course.legs.length}{w.indoorPriority ? " · 실내 우선" : ""}</div>
         </div>
-        <button type="button" className="btn btn-buy-cta" onClick={() => void run(loadSeenPlaces())}>다시 추천</button>
+        <button type="button" className="btn btn-buy-cta" onClick={() => rerun(loadSeenPlaces())}>다시 추천</button>
       </div>
     </>
   );
