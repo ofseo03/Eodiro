@@ -127,20 +127,18 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .map {
   min-height: 420px; border-radius: var(--rounded-xxxl); position: relative; overflow: hidden;
   border: 1px solid var(--color-hairline-soft);
-  background:
-    linear-gradient(var(--color-hairline-soft) 1px, transparent 1px) 0 0 / 48px 48px,
-    linear-gradient(90deg, var(--color-hairline-soft) 1px, transparent 1px) 0 0 / 48px 48px,
-    #f7f9fb;
+  background: #f7f9fb;
 }
 @media (max-width: 767px) { .map { min-height: 300px; } }
-.map-note { position: absolute; left: var(--space-base); bottom: var(--space-base); font: var(--type-caption); color: var(--color-stone); max-width: 60%; }
+.map-canvas { position: absolute; inset: 0; }
+.map-status { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; padding: var(--space-xl); text-align: center; background: #f7f9fb; z-index: 2; }
 .marker {
-  position: absolute; transform: translate(-50%, -50%); width: 32px; height: 32px; border-radius: var(--rounded-circle);
+  position: relative; width: 36px; height: 36px; border-radius: var(--rounded-circle);
   background: var(--color-ink-deep); color: var(--color-canvas); display: grid; place-items: center;
   font: var(--type-caption-bold); border: 2px solid var(--color-canvas); box-shadow: var(--shadow-2); cursor: pointer; padding: 0;
 }
 .marker.is-active { background: var(--color-primary); }
-.map .btn-icon { position: absolute; right: var(--space-base); bottom: var(--space-base); }
+.map .btn-icon { position: absolute; right: var(--space-base); top: var(--space-base); z-index: 2; }
 
 .rail { position: sticky; top: calc(var(--nav-height) + var(--space-base)); max-width: var(--rail-max); width: 100%; }
 @media (max-width: 1023px) { .rail { position: static; max-width: none; } }
