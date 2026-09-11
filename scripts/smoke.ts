@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { replaceCatalog } from '../lib/server/db';
+import { regions } from '../lib/contracts';
 
 const directory = mkdtempSync(resolve('.smoke-'));
 const oldDb = process.env.PLACE_DB_PATH;
@@ -35,7 +36,9 @@ try {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert(ready, `서버 시작 실패: ${logs}`);
-  assert.equal((await call('regions')).data.regions.length, 5);
+  const listed = (await call('regions')).data.regions;
+  assert.equal(listed.length, regions.length);
+  assert.deepEqual(listed.find((r: {id: string}) => r.id === 'seongsu').availability, { cafe: 0, restaurant: 0, activity: 0 });
   const empty = await call('places?regionId=seongsu');
   assert.equal(empty.status, 503); assert.equal(empty.data.error.code, 'CATALOG_NOT_READY');
   const places = ['cafe', 'restaurant', 'activity'].map((category, index) => ({
