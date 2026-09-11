@@ -3,6 +3,7 @@ import { atmosphereSchema, categorySchema, environmentSchema, foodSchema, activi
 import rules from '../../config/classification.json';
 import { fetchJson, fetchText } from './http';
 import { locateRegion } from '../regions';
+import { getVisitSeoulDetail } from './visit-seoul';
 
 export const sources = ['TbVwRestaurants', 'TbVwEntertainment'] as const;
 const rowSchema = z.object({
@@ -10,7 +11,7 @@ const rowSchema = z.object({
   ADDRESS: z.string(), NEW_ADDRESS: z.string(), CMMN_USE_TIME: z.string().optional(),
   CMMN_BSNDE: z.string().optional(), CMMN_RSTDE: z.string().optional(),
 });
-export type SourceRow = z.infer<typeof rowSchema> & { service: typeof sources[number] };
+export type SourceRow = z.infer<typeof rowSchema> & { service: typeof sources[number] | 'VisitSeoul' };
 
 export function parseSource(raw: unknown, service: typeof sources[number]) {
   const root = z.record(z.string(), z.unknown()).parse(raw);
@@ -91,17 +92,21 @@ export async function normalizeRows(rows: SourceRow[], input: unknown) {
   for (const row of rows) {
     const id = `${row.service}:${row.POST_SN}`, review = reviews[id];
     if (!review) { rejected.push({ id, reason: '분류 미검수' }); continue; }
-    const address = row.NEW_ADDRESS || row.ADDRESS;
-    const detail = await getPlacePage(row.POST_URL);
+    const detail = row.service === 'VisitSeoul' ? await getVisitSeoulDetail(row.POST_SN) : {
+      ...await getPlacePage(row.POST_URL), address: row.NEW_ADDRESS || row.ADDRESS,
+      hoursText: [row.CMMN_USE_TIME, row.CMMN_BSNDE, row.CMMN_RSTDE].filter(Boolean).join(' / '),
+    };
+    const address = detail.address;
     const membership = detail.location ? locateRegion(detail.location) : null;
     const location = detail.location && membership ? {...detail.location, ...membership} : null;
     if (!location) { rejected.push({ id, reason: '좌표·행정동 미확인 또는 서비스 지역 밖' }); continue; }
     places.push(placeSchema.parse({ id, name: row.POST_SJ, address, ...location, ...review,
       environment: review.environment ?? inferEnvironment(review.category, review.activity),
-      description: review.description || detail.description,
-      environmentSource: review.environment ? 'reviewed' : 'inferred', atmospheres: atmosphereTags(review.description || detail.description),
-      hoursText: [row.CMMN_USE_TIME, row.CMMN_BSNDE, row.CMMN_RSTDE].filter(Boolean).join(' / '),
-      source: '서울관광재단 · Visit Seoul (공공누리 제1유형)', sourceUrl: row.POST_URL, collectedAt: new Date().toISOString() }));
+      description: review.description || textContent(detail.description),
+      environmentSource: review.environment ? 'reviewed' : 'inferred', atmospheres: atmosphereTags(review.description || textContent(detail.description)),
+      hoursText: detail.hoursText,
+      source: row.service === 'VisitSeoul' ? '서울관광재단 · 비짓서울 API' : '서울 열린데이터광장 · 서울관광재단 (공공누리 제1유형)',
+      sourceUrl: row.POST_URL, collectedAt: new Date().toISOString() }));
   }
   return { places, rejected };
 }
