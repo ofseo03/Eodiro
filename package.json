@@ -1,0 +1,33 @@
+{
+  "name": "eodiro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:http": "node --import tsx scripts/smoke.ts",
+    "collect": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/collect.ts",
+    "collect:regions": "node --import tsx scripts/collect-regions.ts",
+    "import:places": "node --env-file-if-exists=.env.local --import tsx scripts/import-places.ts"
+  },
+  "dependencies": {
+    "next": "16.3.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.0.0",
+    "fast-xml-parser": "^5.0.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "tsx": "^4.20.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}
