@@ -16,6 +16,7 @@
     "test:http": "node --import tsx scripts/smoke.ts",
     "collect": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/collect.ts",
     "collect:regions": "node --import tsx scripts/collect-regions.ts",
+    "index:cached": "node --import tsx scripts/index-cached.ts",
     "import:places": "node --env-file-if-exists=.env.local --import tsx scripts/import-places.ts",
     "gen:regions": "node scripts/gen-regions.mjs",
     "validate:regions": "node scripts/validate-regions.mjs",

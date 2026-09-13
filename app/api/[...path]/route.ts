@@ -4,12 +4,14 @@ import { constraintsSchema, dateTimeSchema, regionIdSchema, regions, requestSche
 import { summarizeCourse } from '../../../lib/course';
 import { preferencesSchema } from '../../../lib/contracts';
 import { countPlacesByRegion, readPlaces } from '../../../lib/server/db';
+import { getPlaceDetails, VisitSeoulError } from '../../../lib/server/visit-seoul';
 import { getWeather } from '../../../lib/server/weather';
 import { getRoute } from '../../../lib/server/routes';
 import { getKakaoMapConfig, kakaoGeocode, kakaoGeocodeQuerySchema, kakaoReverseGeocode, kakaoReverseGeocodeQuerySchema, KakaoMapError } from '../../../lib/server/kakao-map';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 type Context = { params: Promise<{ path: string[] }> };
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 class ApiError extends Error { constructor(public status: number, public code: string, message: string) { super(message); } }
@@ -35,7 +37,7 @@ function placesFor(regionId: string) {
   let places;
   try { places = readPlaces(regionId); }
   catch { throw new ApiError(503, 'PLACE_LOOKUP_FAILED', '장소 조회에 실패했습니다'); }
-  if (!places.length) throw new ApiError(503, 'CATALOG_NOT_READY', '해당 지역의 검수된 장소 데이터가 준비되지 않았습니다');
+  if (!places.length) throw new ApiError(503, 'CATALOG_NOT_READY', '해당 지역의 장소 인덱스가 준비되지 않았습니다');
   return places;
 }
 function future(at: string) {
@@ -44,6 +46,8 @@ function future(at: string) {
 async function handle(run: () => Promise<Response>) {
   try { return await run(); }
   catch (error) {
+    if (error instanceof VisitSeoulError) return Response.json({ error: { code: error.code, message: error.message } },
+      { status: error.status, headers: { 'Cache-Control': 'no-store', ...(error.retryAfterSeconds !== undefined ? { 'Retry-After': String(error.retryAfterSeconds) } : {}) } });
     if (error instanceof ZodError) return json({ error: { code: 'INVALID_INPUT', message: '입력값을 확인하세요', fields: error.issues.map(i => ({ path: i.path.join('.'), message: i.message })) } }, 400);
     if (error instanceof ApiError || error instanceof KakaoMapError) return json({ error: { code: error.code, message: error.message } }, error.status);
     return json({ error: { code: 'INTERNAL_ERROR', message: '서버 처리에 실패했습니다' } }, 500);
@@ -63,7 +67,7 @@ export async function GET(request: Request, context: Context) {
     }
     if (path === 'capabilities') return json({
       walking: { status: 'implemented', accuracy: 'estimated', factor: 1.3, speedKmh: 4 },
-      places: { configured: true, source: 'visit_seoul', publicDownload: true },
+      places: { configured: Boolean(process.env.VISITSEOUL_API_KEY), source: 'visit_seoul', index: 'sqlite' },
       weather: { configured: Boolean(process.env.DATA_GO_KR_KEY), liveVerified: false },
       transit: { configured: Boolean(process.env.DATA_GO_KR_KEY), liveVerified: false,
         source: 'seoul_transit', timing: 'provider_duration' },
@@ -89,8 +93,17 @@ export async function GET(request: Request, context: Context) {
 export async function POST(request: Request, context: Context) {
   return handle(async () => {
     const path = (await context.params).path.join('/');
-    if (path !== 'routes' && path !== 'courses/evaluate') throw new ApiError(404, 'NOT_FOUND', 'API를 찾을 수 없습니다');
+    if (path !== 'routes' && path !== 'courses/evaluate' && path !== 'places/details') throw new ApiError(404, 'NOT_FOUND', 'API를 찾을 수 없습니다');
     const raw = await readBody(request);
+    if (path === 'places/details') {
+      const body = z.strictObject({ regionId: regionIdSchema,
+        placeIds: z.array(z.string().min(1).max(180)).min(1).max(5).refine(ids => new Set(ids).size === ids.length),
+      }).parse(raw);
+      const all = placesFor(body.regionId);
+      const selected = body.placeIds.map(id => all.find(p => p.id === id));
+      if (selected.some(p => !p)) throw new ApiError(400, 'INVALID_PLACE', '선택 지역에 없는 장소입니다');
+      return json({ places: await getPlaceDetails(selected.filter(p => p !== undefined)) });
+    }
     if (path === 'routes') {
       const body = z.strictObject({ regionId: regionIdSchema, fromId: z.string().max(180), toId: z.string().max(180),
         referenceAt: dateTimeSchema, constraints: constraintsSchema }).parse(raw);
@@ -115,6 +128,6 @@ export async function POST(request: Request, context: Context) {
       legs.push(leg);
       at = at && leg.status === 'ok' && leg.minutes !== null ? new Date(Date.parse(departure) + leg.minutes * 60000).toISOString() : null;
     }
-    return json(summarizeCourse(selected, legs, body.request, weather, preferencesSchema.parse({})));
+    return json(summarizeCourse(await getPlaceDetails(selected), legs, body.request, weather, preferencesSchema.parse({})));
   });
 }

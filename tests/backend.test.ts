@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { constraintsSchema, placeSchema, preferencesSchema, requestSchema, type CourseRequest, type Place, type RouteResolver, type Weather } from '../lib/contracts';
 import { recommend, openingStatus, replacePlace, replacementCandidates, retryLeg, summarizeCourse } from '../lib/course';
@@ -9,11 +9,12 @@ import { getRoute, parseTransit } from '../lib/server/routes';
 import { emptyLeg, walkingLeg } from '../lib/routing';
 import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
-import { readPlaces, replaceCatalog } from '../lib/server/db';
-import { createCourse } from '../lib/client';
+import { countPlacesByRegion, readPlaces, replaceCatalog } from '../lib/server/db';
+import { applyReplacement, createCourse } from '../lib/client';
+import { toCourse } from '../lib/api';
 import { locateRegion } from '../lib/regions';
 import { polygonCenter, polygonContains } from '../lib/geo';
-import { normalizeRows, parseDownload, parsePlacePage } from '../lib/server/collect';
+import { normalizeRows, parseDownload, parsePlacePage, indexRow, parseHours, classifyCategory } from '../lib/server/collect';
 
 const now = new Date('2030-01-01T00:00:00Z');
 const startAt = '2030-01-02T01:00:00Z'; // Wednesday 10:00 KST
@@ -95,18 +96,18 @@ test('course composition and estimates; no user preference required', async () =
   await assert.rejects(recommend({ ...normal, startAt: now.toISOString() }, places, weather, walk, {}, [], new Date(now.getTime() + 1)));
 });
 
-test('shortage fills only missing preference slots, preserves category counts and weather overrides outdoor', async () => {
+test('shortage preserves category counts; explicit environment filters candidates', async () => {
   const catalog = [place('r-match', 'restaurant', { food: '한식', environment: 'outdoor' }),
     place('r-extra', 'restaurant', { food: '양식' }), place('r-other', 'restaurant', { food: '일식' }), places[0]];
   const result = await recommend(request({ counts: { cafe: 1, restaurant: 2, activity: 0 } }), catalog,
-    { ...weather, status: 'applied', indoorPriority: true, reason: '비 예보로 실내 우선' }, walk, { foods: ['한식'], environment: 'outdoor' }, [], now);
+    { ...weather, status: 'applied', indoorPriority: true, reason: '비 예보로 실내 우선' }, walk, { foods: ['한식'] }, [], now);
   assert.equal(result.status, 'ok');
   if (result.status !== 'ok') return;
   assert(result.course.visits.some(v => v.place.id === 'r-match'));
   assert.equal(result.course.visits.filter(v => v.outsidePreference).length, 1);
   assert.equal(result.course.visits.filter(v => v.notIndoor).length, 1);
   const indoor = await recommend(request({ counts: { cafe: 2, restaurant: 0, activity: 0 } }), [places[0], place('ci', 'cafe'), place('co', 'cafe', { environment: 'outdoor' })],
-    { ...weather, indoorPriority: true }, walk, { environment: 'outdoor' }, [], now);
+    { ...weather, indoorPriority: true }, walk, { environment: 'indoor' }, [], now);
   assert.equal(indoor.status, 'ok');
   if (indoor.status === 'ok') assert(indoor.course.visits.every(v => v.place.environment === 'indoor'));
 });
@@ -223,11 +224,21 @@ test('SQLite refresh is atomic and never replaces the cache with invalid/empty/d
   const directory = mkdtempSync(resolve('.test-db-')), old = process.env.PLACE_DB_PATH;
   process.env.PLACE_DB_PATH = resolve(directory, 'places.sqlite');
   try {
-    assert.equal(replaceCatalog(places), 3);
+    assert.equal(replaceCatalog(places.map(p => ({ ...p, description: 'details-not-in-index', hoursText: 'hours-not-in-index', address: 'address-not-in-index' }))), 3);
     for (const bad of [[], [{ ...places[0], regionId: 'unknown' }], [places[0], places[0]]]) assert.throws(() => replaceCatalog(bad));
     assert.equal(readPlaces('seongsu').length, 3);
     assert.equal(readPlaces('hongdae').length, 0);
+    const file = process.env.PLACE_DB_PATH;
+    const before = readFileSync(file);
+    for (const detail of ['details-not-in-index', 'address-not-in-index']) assert(!before.includes(detail));
+    assert.equal(readPlaces('seongsu')[0].description, '');
+    chmodSync(file, 0o444); chmodSync(directory, 0o555);
+    assert.equal(readPlaces('seongsu').length, 3);
+    assert.deepEqual(countPlacesByRegion().seongsu, { cafe: 1, restaurant: 1, activity: 1 });
+    assert.deepEqual(readFileSync(file), before);
+    assert.deepEqual(readdirSync(directory), ['places.sqlite']);
   } finally {
+    chmodSync(directory, 0o755);
     if (old === undefined) delete process.env.PLACE_DB_PATH; else process.env.PLACE_DB_PATH = old;
     rmSync(directory, { recursive: true, force: true });
   }
@@ -240,6 +251,11 @@ test('browser workflow emits stages while preferences and exclusions remain abse
     calls.push({ path, body });
     if (path.startsWith('/api/places?')) return Response.json({ places });
     if (path.startsWith('/api/weather?')) return Response.json(weather);
+    if (path === '/api/places/details') {
+      assert.deepEqual(Object.keys(body).sort(), ['placeIds', 'regionId']);
+      assert.equal(body.placeIds.length, 3);
+      return Response.json({ places: places.filter(p => body.placeIds.includes(p.id)).map(p => ({ ...p, description: 'API 상세 설명' })) });
+    }
     assert.equal(path, '/api/routes');
     assert.deepEqual(Object.keys(body).sort(), ['constraints', 'fromId', 'referenceAt', 'regionId', 'toId']);
     return Response.json({ ...emptyLeg(places.find(p => p.id === body.fromId)!, places.find(p => p.id === body.toId)!, body.referenceAt),
@@ -249,7 +265,9 @@ test('browser workflow emits stages while preferences and exclusions remain abse
     const result = await createCourse({ regionId: 'seongsu', startAt: new Date(Date.now() + 86400000).toISOString(), constraints: { modes: ['bus'] } },
       { foods: ['한식'], atmospheres: ['조용함'] }, ['seen-private-id'], stage => stages.push(stage));
     assert.equal(result.status, 'ok');
-    assert.deepEqual(stages, ['places', 'weather', 'routes']);
+    assert.deepEqual(stages, ['places', 'weather', 'routes', 'details']);
+    assert.equal(calls.at(-1)?.path, '/api/places/details');
+    if (result.status === 'ok') assert(result.course.visits.every(v => v.place.description === 'API 상세 설명'));
     const serialized = JSON.stringify(calls);
     for (const privateValue of ['한식', '조용함', 'seen-private-id', 'preferences', 'excludedIds']) assert(!serialized.includes(privateValue));
   } finally { globalThis.fetch = originalFetch; }
@@ -258,13 +276,39 @@ test('browser workflow emits stages while preferences and exclusions remain abse
 test('weather HTTP failure does not prevent a walking course in the browser workflow', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async url => {
-    if (String(url).startsWith('/api/places?')) return Response.json({ places });
+    if (String(url).startsWith('/api/places?') || String(url) === '/api/places/details') return Response.json({ places });
     throw new Error('network failure');
   };
   try {
     const result = await createCourse({ regionId: 'seongsu', constraints: { modes: ['walk'] } });
     assert.equal(result.status, 'ok');
     if (result.status === 'ok') assert.equal(result.course.weather.status, 'unavailable');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('replacement fetches details only for the chosen ID; failed recommendation fetches none', async () => {
+  const originalFetch = globalThis.fetch, replacement = place('new-cafe', 'cafe');
+  const detailIds: string[][] = [];
+  let candidates = [...places, replacement];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('/api/places?')) return Response.json({ places: candidates });
+    if (String(url).startsWith('/api/weather?')) return Response.json(weather);
+    assert.equal(String(url), '/api/places/details');
+    const body = JSON.parse(String(init?.body));
+    detailIds.push(body.placeIds);
+    return Response.json({ places: [{ ...replacement, description: 'fresh detail' }] });
+  };
+  try {
+    const course = summarizeCourse(places, [await walk(places[0], places[1], startAt, normal.constraints),
+      await walk(places[1], places[2], startAt, normal.constraints)], normal, weather, prefs);
+    const replaced = await applyReplacement(course, 0, replacement.id);
+    assert.deepEqual(detailIds, [[replacement.id]]);
+    assert.equal(replaced.visits[0].place.description, 'fresh detail');
+    assert.deepEqual(replaced.visits[1].place, course.visits[1].place);
+    candidates = [];
+    const result = await createCourse({ regionId: 'seongsu' });
+    assert.equal(result.status, 'no_course');
+    assert.equal(detailIds.length, 1);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -302,7 +346,7 @@ test('public dataset download and official place HTML preserve unknowns without 
   assert.equal(parsePlacePage('<html>삭제된 페이지</html>').location, null);
 });
 
-test('collection uses Visit Seoul coordinates only and rejects missing coordinates without another API', async () => {
+test('collection preserves IDs with missing coordinates without another API', async () => {
   const originalFetch = globalThis.fetch, urls: string[] = [];
   globalThis.fetch = async input => {
     urls.push(String(input));
@@ -311,9 +355,11 @@ test('collection uses Visit Seoul coordinates only and rejects missing coordinat
   try {
     const rows = parseDownload({DATA:[{post_sn:42,lang_code_id:'ko',post_sj:'카페',
       post_url:'https://korean.visitseoul.net/test',address:'주소',new_address:''}]}, 'TbVwRestaurants');
-    const result = await normalizeRows(rows, {'TbVwRestaurants:42':{category:'cafe'}});
-    assert.equal(result.places.length, 0);
-    assert.equal(result.rejected.length, 1);
+    const result = await normalizeRows(rows);
+    assert.equal(result.places.length, 1);
+    assert.equal(result.places[0].lat, null);
+    assert.equal(result.places[0].regionId, null);
+    assert.equal(result.failures.length, 0);
     assert.deepEqual(urls, ['https://korean.visitseoul.net/test']);
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -350,5 +396,52 @@ test('one public routing API supplies bus, subway and mixed durations for limits
   } finally {
     globalThis.fetch = originalFetch;
     if (oldKey === undefined) delete process.env.DATA_GO_KR_KEY; else process.env.DATA_GO_KR_KEY = oldKey;
+  }
+});
+
+
+test('all IDs survive indexing; search applies category, environment, closures and event dates', async () => {
+  const row = { service: 'VisitSeoul' as const, POST_SN: 'UNLISTED', POST_SJ: '새 장소', LANG_CODE_ID: 'ko',
+    POST_URL: 'https://api.visitseoul.net/contents/standard/view/UNLISTED', ADDRESS: '', NEW_ADDRESS: '' };
+  assert.equal(classifyCategory('축제/공연/행사').activity, null);
+  assert.equal(classifyCategory('숙박 > 호텔').category, null);
+  const pending = indexRow(row);
+  assert.equal(pending.detailStatus, 'pending'); assert.equal(pending.category, null); assert.equal(pending.regionId, null);
+  const hours = parseHours('10:00~20:00', '매일', '매주 수요일');
+  const cafe = place('unlisted', 'cafe', { hours });
+  assert.equal(openingStatus(cafe, startAt), 'closed');
+  assert.equal(openingStatus(place('holiday', 'cafe', { hours: parseHours('', '', '수요일') }), startAt), 'closed');
+  assert.equal(parseHours('계절별 상이', '', '명절 휴무'), null);
+  assert.equal(parseHours('10:00~20:00', '매일', '명절 휴무'), null);
+  assert.equal(parseHours('10:00~20:00\n브레이크타임 14:00~15:00', '매일', ''), null);
+  assert.equal(openingStatus(place('dated', 'cafe', { hours: parseHours('', '', '2030.01.02 휴무') }), startAt), 'closed');
+  const event = place('event', 'activity', { availableFrom: '2030-01-03', availableUntil: '2030-01-05' });
+  assert.equal(openingStatus(event, startAt), 'closed');
+  assert.equal(openingStatus(event, '2030-01-05T01:00:00Z'), 'hours_unknown');
+  assert.equal(openingStatus(event, '2030-01-06T01:00:00Z'), 'closed');
+  const directory = mkdtempSync(resolve('.test-index-')), old = process.env.PLACE_DB_PATH;
+  process.env.PLACE_DB_PATH = resolve(directory, 'places.sqlite');
+  try {
+    assert.equal(replaceCatalog([pending, ...places, cafe, event]), 6);
+    const indexed = readPlaces('seongsu');
+    assert.deepEqual(indexed.find(p => p.id === cafe.id)?.hours, hours);
+    const result = await recommend(normal, indexed, weather, walk, {}, [], now);
+    assert.equal(result.status, 'ok');
+    if (result.status === 'ok') assert(result.course.visits.every(v => !['unlisted', 'event'].includes(v.place.id)));
+    assert.equal((await recommend(normal, indexed, weather, walk, { environment: 'outdoor' }, [], now)).status, 'no_course');
+    const outdoor = await recommend(normal, places.map(p => ({ ...p, environment: 'outdoor' })),
+      { ...weather, status: 'applied', indoorPriority: true, reason: '비 예보' }, walk, { environment: 'outdoor' }, [], now);
+    assert.equal(outdoor.status, 'ok');
+    if (outdoor.status === 'ok') {
+      const view = toCourse(outdoor.course, 'outdoor');
+      assert.equal(view.weather.indoorPriority, false);
+      assert.match(view.weather.overrideReason!, /선택한 실외 조건을 유지/);
+      assert(view.places.every(p => p.indoor === '실외'));
+    }
+    const course = summarizeCourse(places, [walkingLeg(places[0], places[1], startAt, 1000), walkingLeg(places[1], places[2], startAt, 1000)], normal, weather, prefs);
+    assert.equal(replacementCandidates(course, 0, [cafe]).candidates.length, 0);
+  } finally {
+    if (old === undefined) delete process.env.PLACE_DB_PATH; else process.env.PLACE_DB_PATH = old;
+    rmSync(directory, { recursive: true, force: true });
   }
 });

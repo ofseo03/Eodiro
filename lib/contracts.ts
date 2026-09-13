@@ -46,17 +46,32 @@ export const placeSchema = z.strictObject({
   id: z.string().min(1).max(180), name: z.string().min(1).max(500),
   regionId: regionIdSchema, district: z.string(), dong: z.string(),
   category: categorySchema, lat: z.number().min(37.4).max(37.72), lng: z.number().min(126.75).max(127.2),
-  address: z.string().min(1), description: z.string().default(''),
+  address: z.string().default(''), description: z.string().default(''),
   food: foodSchema.nullable().default(null), activity: activitySchema.nullable().default(null),
   environment: environmentSchema.default('unknown'),
   environmentSource: z.enum(['source', 'inferred', 'reviewed']).default('inferred'),
   atmospheres: z.array(atmosphereSchema).default([]),
   hours: hoursSchema.nullable().default(null), hoursText: z.string().default(''),
+  availableFrom: z.iso.date().nullable().default(null), availableUntil: z.iso.date().nullable().default(null),
   sourceUrl: z.url().refine(u => ['https:', 'http:'].includes(new URL(u).protocol)),
   source: z.string().min(1), collectedAt: dateTimeSchema,
 }).refine(p => regions.some(r => r.id === p.regionId && r.district === p.district && r.dongs.includes(p.dong))
   && locateRegion(p)?.regionId === p.regionId,
   '장소의 행정동이 선택 지역에 속하지 않습니다');
+
+// Every source ID is retained; unresolved fields cannot satisfy an explicit search filter.
+export const placeIndexSchema = z.object(placeSchema.shape).omit({ address: true, description: true }).extend({
+  regionId: regionIdSchema.nullable().default(null), district: z.string().default(''), dong: z.string().default(''),
+  category: categorySchema.nullable().default(null),
+  lat: z.number().min(-90).max(90).nullable().default(null), lng: z.number().min(-180).max(180).nullable().default(null),
+  sourceCategory: z.string().default(''),
+  businessDaysText: z.string().default(''), closedDaysText: z.string().default(''),
+  detailStatus: z.enum(['pending', 'ok', 'failed']).default('ok'),
+}).refine(p => p.regionId === null || (p.lat !== null && p.lng !== null
+  && locateRegion({ lat: p.lat, lng: p.lng })?.regionId === p.regionId
+  && regions.some(r => r.id === p.regionId && r.district === p.district && r.dongs.includes(p.dong))),
+  '장소의 좌표·행정동이 선택 지역에 속하지 않습니다');
+export type PlaceIndex = z.infer<typeof placeIndexSchema>;
 
 export type Category = z.infer<typeof categorySchema>;
 export type Mode = z.infer<typeof modeSchema>;

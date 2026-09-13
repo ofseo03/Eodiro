@@ -1,4 +1,4 @@
-import { requestSchema, type Course, type RouteResolver, type Weather, type Place } from './contracts';
+import { placeSchema, requestSchema, type Course, type RouteResolver, type Weather, type Place } from './contracts';
 import { recommend, replacementCandidates, replacePlace, retryLeg } from './course';
 import { walkingLeg, emptyLeg } from './routing';
 
@@ -26,7 +26,7 @@ export const routeResolver: RouteResolver = async (from, to, referenceAt, constr
 };
 
 /** Call from the browser. Preferences and excluded IDs never enter an HTTP request. */
-export async function createCourse(input: unknown, preferences: unknown = {}, excludedIds: string[] = [], onProgress?: (stage: 'places' | 'weather' | 'routes') => void) {
+export async function createCourse(input: unknown, preferences: unknown = {}, excludedIds: string[] = [], onProgress?: (stage: 'places' | 'weather' | 'routes' | 'details') => void) {
   const now = new Date(), request = requestSchema.parse(input);
   if (Date.parse(request.startAt) < now.getTime()) throw new Error('방문 시각은 현재 이후여야 합니다');
   onProgress?.('places');
@@ -39,7 +39,21 @@ export async function createCourse(input: unknown, preferences: unknown = {}, ex
       temperature: null, precipitationProbability: null, forecastAt: request.startAt, issuedAt: null, fetchedAt: new Date().toISOString() };
   }
   onProgress?.('routes');
-  return recommend(request, places, weather, routeResolver, preferences, excludedIds, now);
+  const result = await recommend(request, places, weather, routeResolver, preferences, excludedIds, now);
+  if (result.status === 'ok') {
+    onProgress?.('details');
+    result.course = await hydrateCourse(result.course);
+  }
+  return result;
+}
+
+async function hydrateCourse(course: Course, ids = course.visits.map(v => v.place.id)): Promise<Course> {
+  const data = await api<{ places: Place[] }>('places/details', { regionId: course.request.regionId, placeIds: ids });
+  const places = placeSchema.array().parse(data.places);
+  if (places.length !== ids.length || ids.some(id => places.filter(p => p.id === id).length !== 1)) {
+    throw new BackendError('PLACE_DETAIL_FAILED', '장소 상세 응답이 불완전합니다', 503);
+  }
+  return { ...course, visits: course.visits.map(v => ({ ...v, place: places.find(p => p.id === v.place.id) ?? v.place })) };
 }
 
 export async function getReplacementCandidates(course: Course, index: number, preferences: unknown = {}, radius: 100 | 300 | 500 = 100) {
@@ -51,6 +65,7 @@ export async function applyReplacement(course: Course, index: number, id: string
   const { places } = await api<{places: Place[]}>(`places?regionId=${encodeURIComponent(course.request.regionId)}`);
   const place = places.find(p => p.id === id);
   if (!place) throw new Error('교체 장소를 찾을 수 없습니다');
-  return replacePlace(course, index, place, places, routeResolver, preferences, radius);
+  const replaced = await replacePlace(course, index, place, places, routeResolver, preferences, radius);
+  return hydrateCourse(replaced, [id]);
 }
 export const retryCourseLeg = (course: Course, index: number, preferences: unknown = {}) => retryLeg(course, index, routeResolver, preferences);

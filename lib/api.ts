@@ -7,15 +7,15 @@ import type {
   Course as BackendCourse, Leg as BackendLeg, Place as BackendPlace, Preferences as BackendPreferences, Visit, Weather as BackendWeather,
 } from "./contracts";
 import { distanceMeters } from "./geo";
-import type { Recommendation } from "./course";
+import { openingStatus, type Recommendation } from "./course";
 import { loadLastRequest, loadPreferences } from "./storage";
 import type {
   Candidate, Category, Course, CourseRequest, IndoorPref, Leg, Mood, Place, Preferences, Replacements, Weather,
 } from "./types";
 
-export type Stage = "장소 찾는 중" | "날씨 확인 중" | "경로 계산 중";
-export const STAGES: Stage[] = ["장소 찾는 중", "날씨 확인 중", "경로 계산 중"];
-const STAGE_OF = { places: "장소 찾는 중", weather: "날씨 확인 중", routes: "경로 계산 중" } as const;
+export type Stage = "장소 찾는 중" | "날씨 확인 중" | "경로 계산 중" | "상세 정보 확인 중";
+export const STAGES: Stage[] = ["장소 찾는 중", "날씨 확인 중", "경로 계산 중", "상세 정보 확인 중"];
+const STAGE_OF = { places: "장소 찾는 중", weather: "날씨 확인 중", routes: "경로 계산 중", details: "상세 정보 확인 중" } as const;
 
 /** 코스를 만들 수 없을 때. exhausted 는 '다시 추천'으로 후보가 소진된 경우(spec 5.4-6). */
 export class CourseError extends Error {
@@ -132,15 +132,16 @@ function toLeg(l: BackendLeg): Leg {
 
 function toWeather(w: BackendWeather, environment: BackendPreferences["environment"]): Weather {
   const reflected = w.status === "applied";
+  const indoorPriority = w.indoorPriority && environment !== "outdoor";
   const overrideReason = !w.indoorPriority ? null
-    : environment === "outdoor" ? `실외 선호보다 날씨(${w.reason ?? "실내 우선 조건"})를 우선해 실내 장소로 구성했어요.`
+    : environment === "outdoor" ? `${w.reason ?? "실내 권장 날씨"} · 선택한 실외 조건을 유지했어요.`
       : `${w.reason ?? "날씨"} 기준으로 실내 장소를 우선 골랐어요.`;
   return {
     reflected,
     baseTime: hhmm(w.forecastAt),
     tempC: w.temperature,
     rainPct: w.precipitationProbability,
-    indoorPriority: w.indoorPriority,
+    indoorPriority,
     overrideReason: reflected ? overrideReason : w.reason,
   };
 }
@@ -227,7 +228,7 @@ export async function fetchReplacements(course: Course, index: number, radius: 1
       id: p.id,
       name: p.name,
       distanceM: Math.round(distanceMeters(origin, p)),
-      open: arrival === null || !p.hours ? null : true, // 후보는 이미 '영업 종료'가 걸러진 상태다
+      open: openingStatus(p, arrival) === "open" ? true : null,
       moods: p.atmospheres as Mood[],
       indoor: toIndoor(p.environment),
       hours: p.hoursText || null,

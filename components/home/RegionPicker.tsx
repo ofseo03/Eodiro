@@ -8,7 +8,7 @@ import { fetchAvailability, type Availability } from "@/lib/api";
 /**
  * region-picker = text-input 검색 + 자치구 pill-tab 행 + 동네 region-picker-row (spec 5.8).
  * 자치구를 고르면 그 구의 동네 타일만 보이고, 검색은 동네명·행정동명 부분 일치로 동작한다(spec 2.3).
- * 카테고리 후보가 하나라도 0인 동네는 회색으로 표시하고 선택할 수 없다. 후보 수는 /api/regions 가 준다.
+ * 카테고리별 데이터 현황만 안내한다. 선택한 개수·날짜 조건은 추천할 때 판단한다.
  */
 
 const TINTS = ["#ffe6f0", "#e3f0ff", "#dff5ea", "#fff3d6", "#ece6ff", "#ffe9d6"];
@@ -98,7 +98,6 @@ export function RegionPicker({ value, onChange, error }: Props) {
                 role="option"
                 aria-selected={isSelected}
                 className={`region-tile${isSelected ? " is-selected" : ""}`}
-                disabled={Boolean(shortage)}
                 onClick={() => select(t)}
                 title={shortage ? `이 동네는 장소 데이터가 부족합니다 (${shortage.join("·")})` : t.dongs.join(" · ")}
               >
@@ -108,8 +107,6 @@ export function RegionPicker({ value, onChange, error }: Props) {
                 <span className="name">{t.name}</span>
                 {shortage ? (
                   <span className="badge badge-attention" style={{ justifySelf: "center" }}>{shortage.join("·")} 부족</span>
-                ) : t.priority ? (
-                  <span className="badge badge-success" style={{ justifySelf: "center" }}>검수 완료</span>
                 ) : (
                   <span className="sub">{q ? t.district : `${t.dongs.length}개 동`}</span>
                 )}
@@ -128,7 +125,9 @@ export function RegionPicker({ value, onChange, error }: Props) {
       ) : (
         <p className="help">아직 동네를 고르지 않았어요.</p>
       )}
-      {selectedShortage && <span className="input-error" role="alert">이 동네는 장소 데이터가 부족합니다 ({selectedShortage.join("·")}). 다른 동네를 골라 주세요.</span>}
+      {selectedShortage && <p className="help">{selectedShortage.length === 3
+        ? "현재 이 동네의 후보 정보가 없어요."
+        : `현재 ${selectedShortage.join("·")} 후보가 없어요. 해당 종류를 0개로 설정하면 다른 종류로 추천받을 수 있어요.`}</p>}
       {error && <span className="input-error" role="alert">{error}</span>}
     </div>
   );

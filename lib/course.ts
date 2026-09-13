@@ -13,9 +13,10 @@ export function matchesPreference(p: Place, prefs: Preferences) {
 
 export function openingStatus(p: Place, at: string | null): Visit['openingStatus'] {
   if (at === null) return 'arrival_unknown';
-  if (!p.hours) return 'hours_unknown';
   const local = new Date(Date.parse(at) + 9 * 3600000);
   const day = local.toISOString().slice(0, 10), weekday = local.getUTCDay();
+  if ((p.availableFrom && day < p.availableFrom) || (p.availableUntil && day > p.availableUntil)) return 'closed';
+  if (!p.hours) return 'hours_unknown';
   const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
   const previous = new Date(local.getTime() - 86400000).toISOString().slice(0, 10);
   const today = p.hours.exceptions[day] ?? p.hours.weekly[String(weekday)];
@@ -23,6 +24,7 @@ export function openingStatus(p: Place, at: string | null): Visit['openingStatus
   if (today?.some(([a, b]) => minutes >= a && minutes < b)) return 'open';
   // Explicit date exceptions replace the entire date, including an overnight opening.
   if (!(day in p.hours.exceptions) && yesterday?.some(([a, b]) => minutes + 1440 >= a && minutes + 1440 < b)) return 'open';
+  if (today?.length === 0) return 'closed';
   return today === undefined || (!(day in p.hours.exceptions) && yesterday === undefined) ? 'hours_unknown' : 'closed';
 }
 
@@ -54,7 +56,8 @@ function candidatePool(places: Place[], request: CourseRequest, prefs: Preferenc
   const tier = (p: Place) => `${p.category}:${matchesPreference(p, prefs) ? 0 : 1}:${weather.indoorPriority && p.environment !== 'indoor' ? 1 : 0}`;
   for (const category of categories) {
     let remaining = request.counts[category];
-    const group = places.filter(p => p.category === category);
+    const group = places.filter(p => p.category === category
+      && (prefs.environment === 'any' || p.environment === prefs.environment || p.environment === 'mixed'));
     for (const key of [...new Set(group.map(tier))].sort()) {
       const candidates = group.filter(p => tier(p) === key);
       const count = Math.min(remaining, candidates.length);
