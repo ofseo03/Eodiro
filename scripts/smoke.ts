@@ -16,7 +16,7 @@ await once(probe, 'listening');
 const port = (probe.address() as { port: number }).port;
 await new Promise<void>(resolve => probe.close(() => resolve()));
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
-  env: { ...process.env, DATA_GO_KR_KEY: '', SEOUL_API_KEY: '', NEXT_TELEMETRY_DISABLED: '1' },
+  env: { ...process.env, DATA_GO_KR_KEY: '', SEOUL_API_KEY: '', KAKAO_REST_API_KEY: '', KAKAO_JAVASCRIPT_KEY: '', NEXT_TELEMETRY_DISABLED: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -64,6 +64,13 @@ try {
   assert.equal((await call('courses/evaluate', { request: { regionId: 'seongsu', startAt: '2000-01-01T00:00:00Z' }, placeIds: places.map(p => p.id) })).status, 400);
   assert.equal((await call('missing')).status, 404);
   assert.equal((await call('capabilities')).data.transit.liveVerified, false);
+  assert.equal((await call('capabilities')).data.geocoding.configured, false);
+  assert.equal((await call('map/geocode?address=Seoul')).data.error.code, 'KAKAO_MAP_NOT_CONFIGURED');
+  assert.equal((await call('map/reverse-geocode?lat=37.56&lng=126.97')).status, 503);
+  assert.equal((await call('map/config')).status, 503);
+  assert.equal((await call('map/config?key=secret')).status, 400);
+  assert.equal((await call('map/geocode?address=')).status, 400);
+  assert.equal((await call('map/reverse-geocode?lat=&lng=126.97')).status, 400);
   const malformed = await fetch(`http://127.0.0.1:${port}/api/routes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400);
   const large = await fetch(`http://127.0.0.1:${port}/api/routes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(17000) });
