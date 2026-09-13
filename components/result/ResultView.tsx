@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CourseMap, LoadingState, Timeline } from "./parts";
+import { LoadingState, Timeline } from "./parts";
+import { CourseMap } from "./CourseMap";
 import { PlaceSheet } from "./PlaceSheet";
 import { CourseError, STAGES, recommendCourse, replacePlace, retryLeg, type Stage } from "@/lib/api";
 import { formatVisitAt } from "@/lib/format";

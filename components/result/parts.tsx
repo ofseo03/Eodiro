@@ -1,6 +1,6 @@
 "use client";
 
-import { BusIcon, CafeIcon, FoodIcon, LocateIcon, PlayIcon, SubwayIcon, TaxiIcon, WalkIcon } from "@/components/Icons";
+import { BusIcon, CafeIcon, FoodIcon, PlayIcon, SubwayIcon, TaxiIcon, WalkIcon } from "@/components/Icons";
 import type { Category, Leg, LegStatus, Place } from "@/lib/types";
 
 export const CategoryIcon = ({ category }: { category: Category }) =>
@@ -17,29 +17,6 @@ const LEG_BADGE: Record<LegStatus, string> = {
   "경로 없음": "badge-critical",
   "경로 조회 실패": "badge-critical",
 };
-
-/** 지도 — 마커와 순서 번호만 둔다. 경로선은 그리지 않는다(spec 4장). 지도 제공자 연결 전 임시 격자. */
-export function CourseMap({ places, activeIndex, onSelect }: { places: Place[]; activeIndex: number | null; onSelect: (i: number) => void }) {
-  return (
-    <div className="map" role="group" aria-label="코스 지도">
-      {places.map((p, i) => (
-        <button
-          type="button"
-          key={p.id}
-          className={`marker${activeIndex === i ? " is-active" : ""}`}
-          style={{ left: `${p.pin.x}%`, top: `${p.pin.y}%` }}
-          aria-label={`${i + 1}. ${p.name}`}
-          aria-pressed={activeIndex === i}
-          onClick={() => onSelect(i)}
-        >
-          {i + 1}
-        </button>
-      ))}
-      <span className="map-note">지도 제공자(스마트서울맵/카카오맵) 연결 전 임시 표시</span>
-      <button type="button" className="btn-icon" aria-label="현재 위치"><LocateIcon /></button>
-    </div>
-  );
-}
 
 /** course-timeline — 장소 카드 → 이동 구간 행 → 장소 카드 (DESIGN.md · Signature Components). */
 export function Timeline({
