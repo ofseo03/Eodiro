@@ -1,22 +1,27 @@
-# 랜딩 사진
+# 캐릭터 이미지
 
-`components/Photo.tsx` 가 이 폴더의 파일을 `next/image` 로 제공한다. 파일이 없으면 자동으로 그라디언트 플레이스홀더를 보여 주므로, 사진은 준비되는 대로 하나씩 넣으면 된다.
+2026-09-14 사용자 요청으로 OpenAI imagegen에서 제작한 창작 일러스트 31개를 웹용 WebP로 변환했습니다. 실제 건축물의 정확한 재현이나 지역 공식 마스코트가 아닙니다. 외부 사진 및 공식 캐릭터 파일은 포함하지 않습니다.
 
-| 파일 | 슬롯 | 비율 · 최소 폭 | 내용 |
-| --- | --- | --- | --- |
-| `hero.jpg` | 랜딩 히어로 | 16:9 이상 · 2400px | 해 질 녘 서울 골목의 카페 거리 |
-| `region-seongsu.jpg` | 지역 쇼케이스 | 4:3 · 1200px | 성수동 붉은 벽돌 창고와 카페 |
-| `region-seochon-ikseon.jpg` | 지역 쇼케이스 | 4:3 · 1200px | 서촌·익선동 한옥 골목 |
-| `region-hongdae-yeonnam.jpg` | 지역 쇼케이스 | 4:3 · 1200px | 연남동 경의선숲길 |
-
-규칙 (spec 5.8 · DESIGN.md Image Behavior)
-
-- 저작권을 확인한 사진만 넣는다. 아래 출처 표에 파일명·출처·라이선스를 함께 적는다.
-- 사진 위 흰 글자 가독성용 오버레이(`rgba(10,19,23,0.12)`)와 32px 라운드는 CSS(`.photo`)가 처리하므로 사진 자체에는 넣지 않는다.
-- JPEG 품질 80 전후, 파일당 600KB 이하를 권장한다. 슬롯 정의와 대체 텍스트는 `lib/images.ts` 에서 바꾼다.
-
-## 출처
-
-| 파일 | 출처 | 라이선스 |
+| 파일 | 사용 위치 | 크기 |
 | --- | --- | --- |
-| (아직 없음) | | |
+| `regions/feature-seongsu.webp` | 성수 · 서울숲 소개 카드 | 1280px 폭 |
+| `regions/feature-seochon.webp` | 서촌 · 익선 소개 카드 | 1280px 폭 |
+| `regions/feature-hongdae.webp` | 홍대 · 연남 소개 카드 | 1280px 폭 |
+| `regions/*.webp` (위 3개 제외, 25개) | 자치구 선택 카드 | 512 × 512 |
+| `categories/restaurant.webp` | 식당 구성 및 코스 장소 카드 | 256 × 256 |
+| `categories/cafe.webp` | 카페 구성 및 코스 장소 카드 | 256 × 256 |
+| `categories/activities.webp` | 놀거리 구성 및 코스 장소 카드 | 256 × 256 |
+
+지역과 파일의 연결은 `lib/images.ts`의 `DISTRICT_IMAGES`에 정의합니다. 검색 순서와 관계없이 자치구 ID로 이미지를 찾습니다. 지역 소개 카드의 어두운 하단은 흰색 제목을 위한 영역입니다. 카드의 둥근 모서리는 CSS로 적용합니다.
+
+기존 히어로 슬롯 `hero.jpg`는 이번 이미지 세트에 포함되지 않으며, 파일이 없으면 기존 그라디언트를 표시합니다.
+
+## 지역 소재 참고 자료
+
+다음 자료는 지역 소재 조사에 사용했으며, 자료의 사진을 가져온 것은 아닙니다.
+
+- [서울에디션25](https://scpm.seoul.go.kr/seoul-policy/evt0296): 서울 자치구별 문화·관광 소재
+- [경복궁](https://royal.khs.go.kr/ROYAL/contents/R101010000.do), [DDP](https://www.ddp.or.kr/), [서대문구 문화관광](https://www.sdm.go.kr/culture/index.do)
+- [중랑장미공원](https://news.seoul.go.kr/culture/archives/528363), [서서울호수공원](https://parks.seoul.go.kr/maps/lake/lakepark_map_KR.pdf)
+- [금천구 가산 패션단지](https://www.geumcheon.go.kr/portal/contents.do?key=914), [강남구 봉은사](https://www.gangnam.go.kr/board/cardnews/86/view.do?mid=fm0306)
+- [익선동 한옥마을](https://hanok.seoul.go.kr/front/kor/town/town09.do), [서촌거리](https://korean.visitkorea.or.kr/detail/ms_detail.do?cotid=d29977f3-026f-42c6-985b-555c491ba70a), [경의선숲길](https://parks.seoul.go.kr/maps/gyeongui/gyeongui_map_KR.pdf)

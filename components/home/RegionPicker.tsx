@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { districts, findDistrict } from "@/lib/districts";
-import { PinIcon } from "@/components/Icons";
+import { DISTRICT_IMAGES } from "@/lib/images";
 import { fetchAvailability, type Availability } from "@/lib/api";
 
-const TINTS = ["#ffe6f0", "#e3f0ff", "#dff5ea", "#fff3d6", "#ece6ff", "#ffe9d6"];
 const CATEGORY_LABEL = { cafe: "카페", restaurant: "식당", activity: "놀거리" } as const;
 
 function shortageOf(availability: Availability | null, districtId: string): string[] | null {
@@ -53,7 +53,7 @@ export function RegionPicker({ value, onChange, error }: Props) {
         <div className="region-empty">&lsquo;{q}&rsquo;에 맞는 구가 없어요. 자치구 이름으로 검색해 주세요.</div>
       ) : (
         <div className="grid-regions" role="group" aria-label="자치구 선택">
-          {matching.map((d, i) => {
+          {matching.map((d) => {
             const shortage = shortageOf(availability, d.id);
             const isSelected = d.id === selected?.id;
             return (
@@ -65,8 +65,8 @@ export function RegionPicker({ value, onChange, error }: Props) {
                 onClick={() => onChange(d.id)}
                 title={shortage ? d.name + "는 장소 데이터가 부족합니다 (" + shortage.join("·") + ")" : d.name + " 전체에서 추천"}
               >
-                <div className="product-thumbnail" style={{ background: shortage ? "var(--color-surface-soft)" : TINTS[i % TINTS.length] }}>
-                  <PinIcon />
+                <div className={`product-thumbnail${shortage ? " is-unavailable" : ""}`}>
+                  <Image src={`/images/regions/${DISTRICT_IMAGES[d.id]}.webp`} alt="" fill sizes="(max-width: 1023px) 30vw, 110px" style={{ objectFit: "contain" }} />
                 </div>
                 <span className="name">{d.name}</span>
                 {shortage ? (
