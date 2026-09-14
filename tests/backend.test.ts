@@ -12,9 +12,11 @@ import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
 import { countPlacesByRegion, deletePlaces, readAllPlaces, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
 import { getPlaceDetails, shortDescription, textContent } from '../lib/server/visit-seoul';
-import { applyReplacement, createCourse } from '../lib/client';
+import { applyReplacement, createCourse, routeResolver } from '../lib/client';
 import { toCourse } from '../lib/api';
 import { locateRegion } from '../lib/regions';
+import { districts, findDistrict } from '../lib/districts';
+import regions from '../config/regions.json';
 import { polygonCenter, polygonContains } from '../lib/geo';
 import { normalizeRows, parseDownload, parsePlacePage, indexRow, parseHours, classifyCategory } from '../lib/server/collect';
 
@@ -629,4 +631,55 @@ test('place descriptions drop editor CSS and fit within five Korean lines', () =
   const oneSentence = '문장 부호 없이 아주 길게 이어지는 설명 '.repeat(10).trim();
   const cut = shortDescription(oneSentence);
   assert(cut.length <= 110 && cut.endsWith('…') && !cut.includes(' …'), cut);
+});
+
+
+test('district courses include other towns while keeping district and replacement radius limits', async () => {
+  const districtId = places[0].district;
+  const otherTown = { ...places[1], regionId: 'eungbong' };
+  const outside = { ...places[1], id: 'outside', regionId: 'hongdae', district: 'other' };
+  const requestInDistrict = request({ regionId: districtId });
+  const result = await recommend(requestInDistrict, [places[0], otherTown, places[2], outside], weather, walk, {}, [], now);
+  assert.equal(result.status, 'ok');
+  if (result.status !== 'ok') return;
+  assert(result.course.visits.some(v => v.place.regionId === 'eungbong'));
+  assert(result.course.visits.every(v => v.place.district === districtId));
+  const index = result.course.visits.findIndex(v => v.place.category === 'restaurant');
+  const replacement = { ...places[1], id: 'replacement' };
+  const tooFar = { ...replacement, id: 'far', lat: replacement.lat + 0.02 };
+  assert.deepEqual(replacementCandidates(result.course, index, [replacement, outside, tooFar]).candidates.map(p => p.id), ['replacement']);
+  assert.equal((await recommend(request(), [places[0], otherTown, places[2]], weather, walk, {}, [], now)).status, 'no_course');
+  assert.equal(findDistrict('seongsu')?.id, districtId);
+  assert.equal(districts.length, 25);
+});
+
+test('district catalog reads aggregate towns without rewriting legacy place membership', () => {
+  const directory = mkdtempSync(resolve('.test-district-db-')), old = process.env.PLACE_DB_PATH;
+  process.env.PLACE_DB_PATH = resolve(directory, 'places.sqlite');
+  try {
+    const town = regions.find(region => region.id === 'eungbong')!;
+    const membership = locateRegion(town)!;
+    const otherTown = place('other-town', 'restaurant', { ...membership, lat: town.lat, lng: town.lng });
+    replaceCatalog([...places, otherTown]);
+    assert.equal(readPlaces(places[0].district).length, 4);
+    assert.equal(readPlaces('seongsu').length, 3);
+    assert.equal(readPlaces(places[0].district).find(p => p.id === 'other-town')?.regionId, 'eungbong');
+  } finally {
+    if (old === undefined) delete process.env.PLACE_DB_PATH; else process.env.PLACE_DB_PATH = old;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('cross-town transit lookup uses the district scope', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedRegion: string | undefined;
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    requestedRegion = body.regionId;
+    return Response.json(emptyLeg(places[0], places[1], startAt));
+  };
+  try {
+    await routeResolver(places[0], { ...places[1], regionId: 'eungbong' }, startAt, constraintsSchema.parse({ modes: ['bus'] }));
+    assert.equal(requestedRegion, places[0].district);
+  } finally { globalThis.fetch = originalFetch; }
 });

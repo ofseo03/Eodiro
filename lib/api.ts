@@ -1,7 +1,7 @@
 // 프론트 화면 ↔ 백엔드 계약 어댑터.
 // 실제 계산은 lib/client.ts(브라우저)와 app/api/*(서버 Route Handler)가 한다. 이 파일은 요청·응답 형태만 바꾼다.
 // 취향과 제외 목록은 lib/client.ts 규칙대로 HTTP 요청에 실리지 않는다.
-import { findTown } from "@/data/regions";
+import { findDistrict } from "./districts";
 import { applyReplacement, createCourse, getReplacementCandidates, retryCourseLeg, BackendError } from "./client";
 import type {
   Course as BackendCourse, Leg as BackendLeg, Place as BackendPlace, Preferences as BackendPreferences, Visit, Weather as BackendWeather,
@@ -43,7 +43,7 @@ export function toBackendPreferences(prefs: Preferences, indoorOverride?: Indoor
 function toBackendRequest(req: CourseRequest) {
   const modes = (["walk", "bus", "subway", "taxi"] as const).filter((m) => req.transport[m]);
   return {
-    regionId: req.townId,
+    regionId: findDistrict(req.townId)?.id,
     startAt: new Date(req.visitAt).toISOString(),
     counts: { cafe: req.composition.카페, restaurant: req.composition.식당, activity: req.composition.놀거리 },
     constraints: { modes, maxWalkMeters: req.maxWalkMeters, maxTravelMinutes: req.maxTravelMinutes },
@@ -148,7 +148,7 @@ function toWeather(w: BackendWeather, environment: BackendPreferences["environme
 }
 
 export function toCourse(backend: BackendCourse, environment: BackendPreferences["environment"]): Course {
-  const town = findTown(backend.request.regionId);
+  const town = findDistrict(backend.request.regionId);
   const townName = town?.name ?? backend.request.regionId;
   const pinList = pins(backend.visits.map((v) => v.place));
   const places = backend.visits.map((v, i) => toPlace(v, pinList[i]));
@@ -180,7 +180,7 @@ export function toCourse(backend: BackendCourse, environment: BackendPreferences
 function fail(err: unknown): never {
   if (err instanceof CourseError) throw err;
   if (err instanceof BackendError) {
-    if (err.code === "CATALOG_NOT_READY" || err.code === "PLACE_LOOKUP_FAILED") throw new CourseError("이 동네의 장소 데이터가 아직 준비되지 않았어요.", "catalog");
+    if (err.code === "CATALOG_NOT_READY" || err.code === "PLACE_LOOKUP_FAILED") throw new CourseError("이 구의 장소 데이터가 아직 준비되지 않았어요.", "catalog");
     if (err.status === 400) throw new CourseError(err.message, "request");
     throw new CourseError(err.message, "network");
   }
@@ -198,7 +198,7 @@ export async function recommendCourse(
   req: CourseRequest,
   opts: { exclude?: string[]; onStage?: (s: Stage) => void } = {},
 ): Promise<Course> {
-  if (!req.townId || !findTown(req.townId)) throw new CourseError("지역을 찾을 수 없어요.", "request");
+  if (!req.townId || !findDistrict(req.townId)) throw new CourseError("지역을 찾을 수 없어요.", "request");
   const prefs = toBackendPreferences(loadPreferences(), req.indoor);
   try {
     const result = await createCourse(toBackendRequest(req), prefs, opts.exclude ?? [], (stage) => opts.onStage?.(STAGE_OF[stage]));
@@ -256,7 +256,7 @@ function currentIndoor(): IndoorPref | undefined {
   return loadLastRequest()?.indoor;
 }
 
-/** 동네별 카테고리 후보 수. 실패하면 null (안내 없이 모두 선택 가능으로 둔다). */
+/** 구별 카테고리 후보 수. 실패하면 null (안내 없이 모두 선택 가능으로 둔다). */
 export type Availability = Record<string, { cafe: number; restaurant: number; activity: number }>;
 export async function fetchAvailability(): Promise<Availability | null> {
   try {
