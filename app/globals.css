@@ -122,7 +122,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---------- Result ---------- */
 .result-head { display: flex; justify-content: space-between; gap: var(--space-base); flex-wrap: wrap; align-items: center; margin-bottom: var(--space-xl); }
-.result-grid { display: grid; grid-template-columns: 58fr 42fr; gap: var(--space-xl); align-items: start; }
+.result-grid { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail-max); gap: var(--space-xl); align-items: start; }
 @media (max-width: 1023px) { .result-grid { grid-template-columns: 1fr; } }
 .map {
   min-height: 420px; border-radius: var(--rounded-xxxl); position: relative; overflow: hidden;
