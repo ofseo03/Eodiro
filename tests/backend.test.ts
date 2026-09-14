@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:
 import { resolve } from 'node:path';
 import { constraintsSchema, placeSchema, preferencesSchema, requestSchema, type CourseRequest, type Place, type RouteResolver, type Weather } from '../lib/contracts';
 import { recommend, openingStatus, replacePlace, replacementCandidates, retryLeg, summarizeCourse } from '../lib/course';
+import { MAX_PER_CATEGORY, compositionProblem, orderAllowed } from '../lib/composition';
 import { distanceMeters, forecastGrid } from '../lib/geo';
 import { getRoute, parseTransit } from '../lib/server/routes';
 import { emptyLeg, walkingLeg } from '../lib/routing';
@@ -35,6 +36,8 @@ const normal = request();
 test('input trust boundaries: counts, distance, modes, privacy and administrative membership', () => {
   for (const extra of [
     { counts: { cafe: 1, restaurant: 0, activity: 0 } }, { counts: { cafe: 5, restaurant: 1, activity: 0 } },
+    { counts: { cafe: 4, restaurant: 0, activity: 1 } }, { counts: { cafe: 0, restaurant: 4, activity: 1 } },
+    { counts: { cafe: 2, restaurant: 0, activity: 0 } }, { counts: { cafe: 0, restaurant: 3, activity: 1 } }, { counts: { cafe: 3, restaurant: 1, activity: 0 } },
     { constraints: { modes: ['taxi'] } }, { constraints: { modes: ['bus', 'bus'] } },
     { constraints: { maxWalkMeters: 1001 } }, { constraints: { maxTravelMinutes: 0 } },
     { preferences: { foods: ['한식'] } }, { userId: 'secret' }, { regionId: 'unknown' },
@@ -97,6 +100,35 @@ test('course composition and estimates; no user preference required', async () =
   await assert.rejects(recommend({ ...normal, startAt: now.toISOString() }, places, weather, walk, {}, [], new Date(now.getTime() + 1)));
 });
 
+test('composition rules: per-category caps, adjacency-feasible counts and no consecutive cafe/restaurant', async () => {
+  assert.equal(MAX_PER_CATEGORY.cafe, 3); assert.equal(MAX_PER_CATEGORY.restaurant, 3); assert.equal(MAX_PER_CATEGORY.activity, 5);
+  const feasible: string[] = [];
+  for (let cafe = 0; cafe <= 5; cafe++) for (let restaurant = 0; restaurant <= 5; restaurant++) for (let activity = 0; activity <= 5; activity++) {
+    const counts = { cafe, restaurant, activity }, total = cafe + restaurant + activity;
+    const expected = total >= 2 && total <= 5 && cafe <= 3 && restaurant <= 3 && cafe <= total - cafe + 1 && restaurant <= total - restaurant + 1;
+    assert.equal(compositionProblem(counts) === null, expected, JSON.stringify(counts));
+    assert.equal(requestSchema.safeParse({ regionId: 'seongsu', counts }).success, expected, JSON.stringify(counts));
+    if (expected) feasible.push(`${cafe},${restaurant},${activity}`);
+  }
+  assert.equal(feasible.length, 36);
+  assert.equal(compositionProblem({ cafe: 3, restaurant: 0, activity: 1 }), '카페는 연달아 방문할 수 없어요. 사이에 넣을 다른 장소를 2곳 이상 더해 주세요.');
+  assert.equal(compositionProblem({ cafe: 0, restaurant: 4, activity: 1 }), '식당은 최대 3곳까지 넣을 수 있어요.');
+  assert.equal(orderAllowed(['cafe', 'activity', 'cafe', 'restaurant', 'activity']), true);
+  assert.equal(orderAllowed(['activity', 'activity', 'cafe']), true);
+  assert.equal(orderAllowed(['cafe', 'cafe', 'activity']), false);
+  assert.equal(orderAllowed(['activity', 'restaurant', 'restaurant']), false);
+  // Two cafes are equally near the activity, so an unpruned search would place them back to back first.
+  const catalog = [place('c1', 'cafe'), place('c2', 'cafe', { lng: 127.0541 }), place('a1', 'activity', { lng: 127.0546 })];
+  const result = await recommend(request({ counts: { cafe: 2, restaurant: 0, activity: 1 } }), catalog, weather, walk, {}, [], now);
+  assert.equal(result.status, 'ok');
+  if (result.status === 'ok') assert.deepEqual(result.course.visits.map(v => v.place.category), ['cafe', 'activity', 'cafe']);
+  const restaurants = [place('r1', 'restaurant'), place('r2', 'restaurant', { lng: 127.0541 }), place('r3', 'restaurant', { lng: 127.0542 }),
+    place('c1', 'cafe', { lng: 127.0543 }), place('a1', 'activity', { lng: 127.0546 })];
+  const five = await recommend(request({ counts: { cafe: 1, restaurant: 3, activity: 1 } }), restaurants, weather, walk, {}, [], now);
+  assert.equal(five.status, 'ok');
+  if (five.status === 'ok') assert(orderAllowed(five.course.visits.map(v => v.place.category)) && five.course.visits.filter(v => v.place.category === 'restaurant').length === 3);
+});
+
 test('shortage preserves category counts; explicit environment filters candidates', async () => {
   const catalog = [place('r-match', 'restaurant', { food: '한식', environment: 'outdoor' }),
     place('r-extra', 'restaurant', { food: '양식' }), place('r-other', 'restaurant', { food: '일식' }), places[0]];
@@ -107,7 +139,7 @@ test('shortage preserves category counts; explicit environment filters candidate
   assert(result.course.visits.some(v => v.place.id === 'r-match'));
   assert.equal(result.course.visits.filter(v => v.outsidePreference).length, 1);
   assert.equal(result.course.visits.filter(v => v.notIndoor).length, 1);
-  const indoor = await recommend(request({ counts: { cafe: 2, restaurant: 0, activity: 0 } }), [places[0], place('ci', 'cafe'), place('co', 'cafe', { environment: 'outdoor' })],
+  const indoor = await recommend(request({ counts: { cafe: 1, restaurant: 0, activity: 1 } }), [places[0], place('co', 'cafe', { environment: 'outdoor' }), place('ai', 'activity'), place('ao', 'activity', { environment: 'outdoor' })],
     { ...weather, indoorPriority: true }, walk, { environment: 'indoor' }, [], now);
   assert.equal(indoor.status, 'ok');
   if (indoor.status === 'ok') assert(indoor.course.visits.every(v => v.place.environment === 'indoor'));

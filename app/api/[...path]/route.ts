@@ -2,6 +2,7 @@ import 'server-only';
 import { z, ZodError } from 'zod';
 import { constraintsSchema, dateTimeSchema, regionIdSchema, regions, requestSchema } from '../../../lib/contracts';
 import { summarizeCourse } from '../../../lib/course';
+import { orderAllowed } from '../../../lib/composition';
 import { preferencesSchema } from '../../../lib/contracts';
 import { countPlacesByRegion, readPlaces } from '../../../lib/server/db';
 import { getPlaceDetails, VisitSeoulError } from '../../../lib/server/visit-seoul';
@@ -119,6 +120,7 @@ export async function POST(request: Request, context: Context) {
     if (places.some(p => !p)) throw new ApiError(400, 'INVALID_PLACE', '선택 지역에 없는 장소입니다');
     const selected = places.filter(p => p !== undefined);
     if (Object.entries(body.request.counts).some(([c, n]) => selected.filter(p => p.category === c).length !== n)) throw new ApiError(400, 'INVALID_COMPOSITION', '코스 구성과 장소 수가 다릅니다');
+    if (!orderAllowed(selected.map(p => p.category))) throw new ApiError(400, 'INVALID_ORDER', '카페와 식당은 연달아 방문할 수 없습니다');
     const weather = await getWeather(regions.find(r => r.id === body.request.regionId)!, body.request.startAt);
     const legs = [];
     let at: string | null = body.request.startAt;

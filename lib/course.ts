@@ -1,6 +1,7 @@
 import { preferencesSchema, requestSchema, type Course, type CourseRequest, type Place, type Preferences, type RouteResolver, type Visit, type Weather } from './contracts';
 import { distanceMeters } from './geo';
 import { taxiAlternative } from './routing';
+import { canFollow } from './composition';
 
 const dwell = { cafe: 60, restaurant: 60, activity: 90 };
 const categories = ['cafe', 'restaurant', 'activity'] as const;
@@ -103,6 +104,7 @@ export async function recommend(
       for (const p of candidates!.pool) {
         const tier = candidates!.tier(p);
         if (used.has(p.id) || (taken.get(tier) ?? 0) >= candidates!.quotas.get(tier)!) continue;
+        if (!canFollow(selected.length ? selected[selected.length - 1].category : null, p.category)) continue;
         if (++steps > 30000) { hitLimit = true; return null; }
         let nextArrival = arrival, nextKnown = known;
         const nextLegs = [...legs];

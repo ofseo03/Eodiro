@@ -9,9 +9,10 @@ import { nowLocalInput } from "@/lib/format";
 import { clearSeenPlaces, loadLastRequest, loadPreferences, saveLastRequest } from "@/lib/storage";
 import { useHydrated, useStored } from "@/lib/useStored";
 import {
-  CATEGORIES, INDOOR_PREFS, MAX_PLACES, MAX_WALK_METERS, MIN_PLACES,
+  CATEGORIES, INDOOR_PREFS, MAX_PER_CATEGORY_LABELED, MAX_PLACES, MAX_WALK_METERS, MIN_PLACES,
   DEFAULT_PREFERENCES, type Category, type CourseRequest, type IndoorPref,
 } from "@/lib/types";
+import { compositionProblem } from "@/lib/composition";
 
 /**
  * course-request-panel — 홈 입력 폼 (spec 2.3 · 5.8).
@@ -38,8 +39,8 @@ function validate(r: CourseRequest): Errors {
   if (!r.townId) e.townId = "지역을 골라 주세요.";
   if (!r.visitAt) e.visitAt = "방문 날짜와 시간을 입력해 주세요.";
   else if (new Date(r.visitAt).getTime() < Date.now() - 60_000) e.visitAt = "현재 시각 이후로 설정해 주세요.";
-  const total = Object.values(r.composition).reduce((a, b) => a + b, 0);
-  if (total < MIN_PLACES || total > MAX_PLACES) e.composition = `총 장소 수는 ${MIN_PLACES}곳 이상 ${MAX_PLACES}곳 이하여야 해요.`;
+  const composition = compositionProblem({ cafe: r.composition.카페, restaurant: r.composition.식당, activity: r.composition.놀거리 });
+  if (composition) e.composition = composition;
   if (!(r.maxTravelMinutes > 0)) e.maxTravelMinutes = "1분 이상으로 입력해 주세요.";
   if (r.transport.walk) {
     if (!(r.maxWalkMeters > 0)) e.maxWalkMeters = "1m 이상으로 입력해 주세요.";
@@ -128,12 +129,12 @@ export function CourseRequestForm() {
                 <div className="stepper" role="group" aria-label={`${cat} 개수`}>
                   <button type="button" className="btn-icon" aria-label={`${cat} 줄이기`} disabled={req.composition[cat] === 0} onClick={() => step(cat, -1)}>−</button>
                   <b className="t-body-md-bold" aria-live="polite">{req.composition[cat]}</b>
-                  <button type="button" className="btn-icon" aria-label={`${cat} 늘리기`} disabled={total >= MAX_PLACES} onClick={() => step(cat, 1)}>+</button>
+                  <button type="button" className="btn-icon" aria-label={`${cat} 늘리기`} disabled={total >= MAX_PLACES || req.composition[cat] >= MAX_PER_CATEGORY_LABELED[cat]} onClick={() => step(cat, 1)}>+</button>
                 </div>
               </div>
             ))}
           </div>
-          {errors.composition && <span className="input-error">{errors.composition}</span>}
+          {errors.composition ? <span className="input-error">{errors.composition}</span> : <span className="help">카페·식당은 각각 최대 {MAX_PER_CATEGORY_LABELED.카페}곳이고, 같은 종류를 연달아 방문하지 않도록 순서를 정해요.</span>}
         </div>
 
         <div className="grid-inputs">
