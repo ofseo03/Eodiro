@@ -7,7 +7,7 @@ import { recommend, openingStatus, replacePlace, replacementCandidates, retryLeg
 import { MAX_PER_CATEGORY, compositionProblem, orderAllowed } from '../lib/composition';
 import { distanceMeters, forecastGrid } from '../lib/geo';
 import { getRoute, parseTransit } from '../lib/server/routes';
-import { emptyLeg, walkingLeg } from '../lib/routing';
+import { emptyLeg, memoizeRoutes, walkingLeg } from '../lib/routing';
 import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
 import { countPlacesByRegion, deletePlaces, readAllPlaces, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
@@ -152,6 +152,61 @@ test('reroll exclusions are honored and exhaustion is distinguished from impossi
   assert.equal((await recommend(normal, places.slice(0, 1), weather, walk, {}, [], now)).status, 'no_course');
   const tooLong = async (a: Place, b: Place, at: string) => ({ ...emptyLeg(a, b, at), status: 'ok' as const, minutes: 100 });
   assert.equal((await recommend(normal, places, weather, tooLong, {}, [], now)).status, 'no_course');
+});
+
+test('nearest-first transit search looks up each pair once and costs one lookup per leg when every leg fits', async () => {
+  // Every pair is beyond walking range, so each leg needs a transit lookup.
+  const spread = [[37.535, 127.05], [37.535, 127.056], [37.537, 127.061], [37.539, 127.052], [37.54, 127.057], [37.543, 127.053]];
+  const far = spread.map(([lat, lng], i) => place(`p${i}`, (['cafe', 'restaurant', 'activity'] as const)[i % 3], { lat, lng }));
+  assert(far.every((a, i) => far.every((b, j) => i === j || distanceMeters(a, b) * 1.3 > 500)));
+  const input = request({ counts: { cafe: 2, restaurant: 2, activity: 1 }, constraints: constraintsSchema.parse({ modes: ['walk', 'bus'] }) });
+  const seen = new Map<string, number>();
+  const provider: RouteResolver = async (a, b, at) => {
+    seen.set(`${a.id}>${b.id}`, (seen.get(`${a.id}>${b.id}`) ?? 0) + 1);
+    return { ...emptyLeg(a, b, at), status: 'ok', mode: 'bus', minutes: 5, accuracy: 'provider' };
+  };
+  const result = await recommend(input, far, weather, provider, {}, [], now);
+  assert.equal(result.status, 'ok');
+  if (result.status !== 'ok') return;
+  assert.equal(seen.size, 4);
+  assert([...seen.values()].every(n => n === 1));
+  assert(result.course.legs.every(l => l.accuracy === 'provider' && l.minutes === 5));
+  assert.equal(result.course.totalTravelMinutes, 20);
+  // Each stop after the first is the nearest remaining candidate of an allowed category.
+  const stops = result.course.visits.map(v => v.place);
+  stops.slice(1).forEach((stop, i) => {
+    const prev = stops[i], rest = far.filter(p => !stops.slice(0, i + 1).includes(p) && p.category !== prev.category);
+    assert.equal(stop.id, rest.sort((a, b) => distanceMeters(prev, a) - distanceMeters(prev, b))[0].id);
+  });
+  // A leg that breaks the budget sends the search elsewhere, and the same pair is never fetched twice.
+  const slowFirst: RouteResolver = async (a, b, at) => ({ ...emptyLeg(a, b, at), status: 'ok', mode: 'bus', minutes: a.id === 'p0' ? 100 : 5, accuracy: 'provider' });
+  const rerouted = await recommend(input, far, weather, slowFirst, {}, [], now);
+  assert.equal(rerouted.status, 'ok');
+  if (rerouted.status === 'ok') assert(rerouted.course.legs.every(l => l.fromId !== 'p0' && l.minutes === 5));
+  let calls = 0;
+  const memoized = memoizeRoutes(async (...args) => { calls++; return walk(...args); });
+  await memoized(far[0], far[1], startAt, input.constraints);
+  await memoized(far[0], far[1], '2030-01-02T02:00:00Z', input.constraints);
+  await memoized(far[1], far[0], startAt, input.constraints);
+  assert.equal(calls, 2);
+});
+
+test('candidates are tried by preference score first and by distance from the previous stop second', async () => {
+  // First stop: a2 and c tie on score, so id order picks a2. Next: c (score 1, 265m) beats the nearer a3 (score 0, 177m).
+  // Without preferences, id order picks a1, then the nearest activity a2, then the cafe fills the last slot.
+  const line = [
+    place('c', 'cafe', { atmospheres: ['조용함'] }),
+    place('a1', 'activity', { lng: 127.054 + 0.006 }),
+    place('a2', 'activity', { lng: 127.054 + 0.003, atmospheres: ['조용함'] }),
+    place('a3', 'activity', { lng: 127.054 + 0.001 }),
+  ];
+  const input = request({ counts: { cafe: 1, restaurant: 0, activity: 2 }, constraints: constraintsSchema.parse({ modes: ['walk'], maxWalkMeters: 1000 }) });
+  const result = await recommend(input, line, weather, walk, { atmospheres: ['조용함'] }, [], now);
+  assert.equal(result.status, 'ok');
+  if (result.status === 'ok') assert.deepEqual(result.course.visits.map(v => v.place.id), ['a2', 'c', 'a3']);
+  const plain = await recommend(input, line, weather, walk, {}, [], now);
+  assert.equal(plain.status, 'ok');
+  if (plain.status === 'ok') assert.deepEqual(plain.course.visits.map(v => v.place.id), ['a1', 'a2', 'c']);
 });
 
 test('taxi-free alternative order wins; genuine no-route permits only an unknown-time taxi fallback', async () => {

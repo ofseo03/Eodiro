@@ -70,7 +70,7 @@ function candidatePool(places: Place[], request: CourseRequest, prefs: Preferenc
   const score = (p: Place) => prefs.atmospheres.filter(a => p.atmospheres.includes(a)).length
     + (!weather.indoorPriority && prefs.environment !== 'any' && p.environment === prefs.environment ? 1 : 0);
   pool.sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
-  return { pool, quotas, tier };
+  return { pool, quotas, tier, score };
 }
 
 export type Recommendation = { status: 'ok'; course: Course } | { status: 'no_course' | 'exhausted' | 'search_limit'; message: string };
@@ -88,21 +88,36 @@ export async function recommend(
     const exhausted = excluded.size > 0 && candidatePool(regional, request, prefs, weather) !== null;
     return { status: exhausted ? 'exhausted' : 'no_course', message: exhausted ? '더 이상 새로운 장소가 없습니다' : '조건에 맞는 코스가 없습니다' };
   }
+  // 같은 장소 쌍은 한 번만 조회한다. 출발 시각은 키에 넣지 않는다(분 단위 차이로 재조회하지 않기 위해).
   const memo = new Map<string, ReturnType<RouteResolver>>();
-  const route: RouteResolver = (a, b, at, constraints) => {
-    const key = JSON.stringify([a.id, b.id, at]);
-    if (!memo.has(key)) memo.set(key, resolve(a, b, at, constraints));
-    return memo.get(key)!;
+  const route = (a: Place, b: Place, at: string) => {
+    const key = `${a.id}\n${b.id}`;
+    if (!memo.has(key)) memo.set(key, resolve(a, b, at, request.constraints));
+    return memo.get(key)!.then(leg => ({ ...leg, referenceAt: at }));
   };
   let steps = 0, hitLimit = false;
   const target = Object.values(request.counts).reduce((a, b) => a + b, 0);
+  // 첫 장소는 선호 점수순, 그다음부터는 같은 점수 안에서 직전 장소와 가까운 순으로 시도한다.
+  // 가까운 쌍이 먼저 조회되므로 대부분 첫 후보에서 성립해 경로 조회 수가 구간 수에 가깝다.
+  const ordered = new Map<string, Place[]>();
+  const candidatesAfter = (prev: Place | undefined) => {
+    if (!prev) return candidates.pool;
+    let list = ordered.get(prev.id);
+    if (!list) {
+      const score = new Map(candidates.pool.map(p => [p.id, candidates.score(p)] as const));
+      const distance = new Map(candidates.pool.map(p => [p.id, distanceMeters(prev, p)] as const));
+      list = [...candidates.pool].sort((a, b) => score.get(b.id)! - score.get(a.id)! || distance.get(a.id)! - distance.get(b.id)! || a.id.localeCompare(b.id));
+      ordered.set(prev.id, list);
+    }
+    return list;
+  };
   async function search(allowFailed: boolean, allowTaxi: boolean): Promise<Course | null> {
     const used = new Set<string>(), taken = new Map<string, number>();
     async function visit(selected: Place[], legs: Course['legs'], arrival: string | null, known: number): Promise<Course | null> {
       // ponytail: bounded DFS; return search_limit, never a false no_course. Add a spatial solver if catalogs outgrow this budget.
       if (hitLimit) return null;
       if (selected.length === target) return summarizeCourse(selected, legs, request, weather, prefs);
-      for (const p of candidates!.pool) {
+      for (const p of candidatesAfter(selected[selected.length - 1])) {
         const tier = candidates!.tier(p);
         if (used.has(p.id) || (taken.get(tier) ?? 0) >= candidates!.quotas.get(tier)!) continue;
         if (!canFollow(selected.length ? selected[selected.length - 1].category : null, p.category)) continue;
@@ -112,7 +127,7 @@ export async function recommend(
         if (selected.length) {
           const prev = selected[selected.length - 1];
           const departure = arrival === null ? request.startAt : addMinutes(arrival, dwell[prev.category]);
-          let leg = await route(prev, p, departure, request.constraints);
+          let leg = await route(prev, p, departure);
           if (allowTaxi) leg = taxiAlternative(leg, request.constraints);
           if (leg.status === 'no_route' || (leg.status === 'route_failed' && !allowFailed) || (leg.status === 'taxi_review' && !allowTaxi)) continue;
           if (leg.walkLimit === 'estimated_exceeded') continue;
