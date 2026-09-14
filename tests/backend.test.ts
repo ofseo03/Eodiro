@@ -9,7 +9,7 @@ import { getRoute, parseTransit } from '../lib/server/routes';
 import { emptyLeg, walkingLeg } from '../lib/routing';
 import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
-import { countPlacesByRegion, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
+import { countPlacesByRegion, deletePlaces, readAllPlaces, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
 import { getPlaceDetails } from '../lib/server/visit-seoul';
 import { applyReplacement, createCourse } from '../lib/client';
 import { toCourse } from '../lib/api';
@@ -291,6 +291,10 @@ test('manual places are appended without replacing the catalog and serve details
     assert.throws(() => upsertPlaces([{ ...manual, id: 'manual:another' }, { ...manual, id: 'manual:bad', lat: 37.58 }]));
     assert.throws(() => upsertPlaces([manual, manual]), /중복 장소 ID/);
     assert.equal(readPlaces('seongsu').length, 4);
+    assert.equal(readAllPlaces().length, 4);
+    assert.equal(deletePlaces(['manual:seongsu-cafe', 'manual:missing']), 1);
+    assert.equal(readPlaces('seongsu').length, 3);
+    assert.deepEqual(upsertPlaces([manual]), { inserted: 1, updated: 0 });
     // 수동 장소는 외부 API 없이 인덱스 값으로 상세를 채우고, 비짓서울 ID 형식 오류는 여전히 거부한다.
     globalThis.fetch = async () => { throw new Error('network must not be used'); };
     const [detail] = await getPlaceDetails([stored!]);
