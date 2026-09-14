@@ -81,6 +81,8 @@ npm run add:places -- 추가-장소.json --strict   # 같은 ID가 있으면 아
 - 저장 후 해당 동네의 카테고리별 개수와 아직 부족한 카테고리를 출력합니다. 세 카테고리가 모두 1개 이상이면 홈에서 선택할 수 있게 됩니다.
 - 갱신된 `data/places.sqlite`를 커밋해야 배포에 반영됩니다.
 
+어느 동네가 얼마나 부족한지는 `npm run gen:missing`으로 뽑습니다. [`missing-places.md`](missing-places.md)에 구별 목록을, [`manual-places.todo.json`](manual-places.todo.json)에 부족한 칸마다 한 건씩 자리를 잡아 둔 템플릿을 씁니다. 템플릿 항목은 이름이 `(작성 필요)`로 시작하고 좌표는 행정동 중심 자리표시자이므로, 실제 장소로 바꾼 항목만 남기고 `add:places`를 실행합니다. `(작성 필요)`가 남은 항목이 하나라도 있으면 아무것도 저장하지 않습니다.
+
 ## 다른 컴퓨터에서 파일 만들기
 
 JSON 인덱스 배열을 준비했다면:
