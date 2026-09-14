@@ -1,10 +1,9 @@
 "use client";
 
-import { BusIcon, CafeIcon, FoodIcon, PlayIcon, SubwayIcon, TaxiIcon, WalkIcon } from "@/components/Icons";
-import type { Category, Leg, LegStatus, Place } from "@/lib/types";
-
-export const CategoryIcon = ({ category }: { category: Category }) =>
-  category === "카페" ? <CafeIcon /> : category === "식당" ? <FoodIcon /> : <PlayIcon />;
+import Image from "next/image";
+import { BusIcon, SubwayIcon, TaxiIcon, WalkIcon } from "@/components/Icons";
+import { CATEGORY_IMAGES } from "@/lib/images";
+import type { Leg, LegStatus, Place } from "@/lib/types";
 
 const ModeIcon = ({ mode }: { mode: Leg["mode"] }) =>
   mode === "도보" ? <WalkIcon /> : mode === "버스" ? <BusIcon /> : mode === "지하철" ? <SubwayIcon /> : <TaxiIcon />;
@@ -30,7 +29,7 @@ export function Timeline({
       {places.map((p, i) => (
         <li key={p.id} style={{ display: "contents" }}>
           <button type="button" className={`place-card${activeIndex === i ? " is-active" : ""}`} onClick={() => onSelect(i)} aria-expanded={activeIndex === i}>
-            <div className="product-thumbnail"><CategoryIcon category={p.category} /></div>
+            <div className="product-thumbnail"><Image src={CATEGORY_IMAGES[p.category]} alt="" width={72} height={72} className="category-character" /></div>
             <div>
               <div className="title">
                 <span className="order">{i + 1}</span>

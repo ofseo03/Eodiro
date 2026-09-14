@@ -59,7 +59,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .section-lead { margin: var(--space-base) 0 var(--space-xxxl); max-width: 52ch; }
 .section-sub { margin: var(--space-xs) 0 var(--space-xxl); }
 
-.card-feature-photo { min-height: 320px; display: flex; align-items: flex-end; padding: var(--space-xxl); color: var(--color-canvas); }
+.card-feature-photo { width: 100%; min-width: 0; min-height: 320px; aspect-ratio: 5 / 4; display: flex; align-items: flex-end; padding: var(--space-lg); color: var(--color-canvas); }
 .card-feature-photo h3 { color: var(--color-canvas); }
 .card-feature-photo p { margin-top: var(--space-xxs); }
 .icon-tile-glyph { width: 32px; height: 32px; color: var(--color-ink-deep); margin-bottom: var(--space-base); }
@@ -94,7 +94,8 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .district-tabs .pill-tab { flex: none; }
 
 .region-tile { display: grid; gap: var(--space-xs); text-align: center; cursor: pointer; background: none; border: 0; padding: 0; min-width: 0; }
-.region-tile .product-thumbnail { border-radius: var(--rounded-lg); padding: 0; border: 1px solid transparent; display: grid; place-items: center; width: 100%; color: var(--color-steel); }
+.region-tile .product-thumbnail { position: relative; overflow: hidden; border-radius: var(--rounded-lg); padding: 0; border: 1px solid transparent; display: grid; place-items: center; width: 100%; color: var(--color-steel); }
+.region-tile .product-thumbnail.is-unavailable img { filter: grayscale(1); opacity: 0.5; }
 .region-tile.is-selected .product-thumbnail { border: 2px solid var(--color-ink-deep); color: var(--color-ink-deep); }
 .region-tile .name { font: var(--type-body-sm-bold); color: var(--color-ink); }
 .region-tile .sub { font: var(--type-body-sm); color: var(--color-steel); }
@@ -106,6 +107,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
 .composition { display: flex; gap: var(--space-lg); flex-wrap: wrap; }
 .composition-item { display: flex; align-items: center; gap: var(--space-xs); }
+.category-character { display: block; flex: none; object-fit: contain; border-radius: var(--rounded-lg); }
 .stepper { display: inline-flex; align-items: center; gap: var(--space-xs); }
 .stepper .btn-icon { width: 36px; height: 36px; }
 .stepper .btn-icon:disabled { color: var(--color-disabled-text); cursor: not-allowed; }

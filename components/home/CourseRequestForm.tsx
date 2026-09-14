@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import { CATEGORY_IMAGES } from "@/lib/images";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { RegionPicker } from "./RegionPicker";
@@ -125,6 +127,7 @@ export function CourseRequestForm() {
           <div className="composition">
             {CATEGORIES.map((cat) => (
               <div className="composition-item" key={cat}>
+                <Image src={CATEGORY_IMAGES[cat]} alt="" width={48} height={48} className="category-character" />
                 <span className={`badge badge-neutral${cat === "놀거리" ? " badge-purple" : ""}`}>{cat}</span>
                 <div className="stepper" role="group" aria-label={`${cat} 개수`}>
                   <button type="button" className="btn-icon" aria-label={`${cat} 줄이기`} disabled={req.composition[cat] === 0} onClick={() => step(cat, -1)}>−</button>
