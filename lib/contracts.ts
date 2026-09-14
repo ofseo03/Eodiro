@@ -60,8 +60,12 @@ export const placeSchema = z.strictObject({
   && locateRegion(p)?.regionId === p.regionId,
   '장소의 행정동이 선택 지역에 속하지 않습니다');
 
+/** 비짓서울 콘텐츠 ID. 주소·설명은 상세 API로 조회하므로 인덱스에 저장하지 않는다. */
+export const isVisitSeoulId = (id: string) => /^VisitSeoul:[A-Za-z0-9]+$/.test(id);
+
 // Every source ID is retained; unresolved fields cannot satisfy an explicit search filter.
-export const placeIndexSchema = z.object(placeSchema.shape).omit({ address: true, description: true, detailFailed: true }).extend({
+// 수동 추가 장소(`manual:` 등 비짓서울 외 ID)는 인덱스가 유일한 출처이므로 주소·설명을 그대로 보존한다.
+export const placeIndexSchema = z.object(placeSchema.shape).omit({ detailFailed: true }).extend({
   regionId: regionIdSchema.nullable().default(null), district: z.string().default(''), dong: z.string().default(''),
   category: categorySchema.nullable().default(null),
   lat: z.number().min(-90).max(90).nullable().default(null), lng: z.number().min(-180).max(180).nullable().default(null),
@@ -71,7 +75,8 @@ export const placeIndexSchema = z.object(placeSchema.shape).omit({ address: true
 }).refine(p => p.regionId === null || (p.lat !== null && p.lng !== null
   && locateRegion({ lat: p.lat, lng: p.lng })?.regionId === p.regionId
   && regions.some(r => r.id === p.regionId && r.district === p.district && r.dongs.includes(p.dong))),
-  '장소의 좌표·행정동이 선택 지역에 속하지 않습니다');
+  '장소의 좌표·행정동이 선택 지역에 속하지 않습니다')
+  .transform(p => isVisitSeoulId(p.id) ? { ...p, address: '', description: '' } : p);
 export type PlaceIndex = z.infer<typeof placeIndexSchema>;
 
 export type Category = z.infer<typeof categorySchema>;

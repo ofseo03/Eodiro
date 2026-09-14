@@ -9,7 +9,8 @@ import { getRoute, parseTransit } from '../lib/server/routes';
 import { emptyLeg, walkingLeg } from '../lib/routing';
 import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
-import { countPlacesByRegion, readPlaces, replaceCatalog } from '../lib/server/db';
+import { countPlacesByRegion, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
+import { getPlaceDetails } from '../lib/server/visit-seoul';
 import { applyReplacement, createCourse } from '../lib/client';
 import { toCourse } from '../lib/api';
 import { locateRegion } from '../lib/regions';
@@ -248,7 +249,8 @@ test('SQLite refresh is atomic and never replaces the cache with invalid/empty/d
   const directory = mkdtempSync(resolve('.test-db-')), old = process.env.PLACE_DB_PATH;
   process.env.PLACE_DB_PATH = resolve(directory, 'places.sqlite');
   try {
-    assert.equal(replaceCatalog(places.map(p => ({ ...p, description: 'details-not-in-index', hoursText: 'hours-not-in-index', address: 'address-not-in-index' }))), 3);
+    // 비짓서울 콘텐츠의 주소·설명은 상세 API로 다시 조회하므로 인덱스에 남기지 않는다.
+    assert.equal(replaceCatalog(places.map(p => ({ ...p, id: `VisitSeoul:${p.id}`, description: 'details-not-in-index', hoursText: 'hours-not-in-index', address: 'address-not-in-index' }))), 3);
     for (const bad of [[], [{ ...places[0], regionId: 'unknown' }], [places[0], places[0]]]) assert.throws(() => replaceCatalog(bad));
     assert.equal(readPlaces('seongsu').length, 3);
     assert.equal(readPlaces('hongdae').length, 0);
@@ -263,6 +265,40 @@ test('SQLite refresh is atomic and never replaces the cache with invalid/empty/d
     assert.deepEqual(readdirSync(directory), ['places.sqlite']);
   } finally {
     chmodSync(directory, 0o755);
+    if (old === undefined) delete process.env.PLACE_DB_PATH; else process.env.PLACE_DB_PATH = old;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('manual places are appended without replacing the catalog and serve details from the index', async () => {
+  const directory = mkdtempSync(resolve('.test-db-')), old = process.env.PLACE_DB_PATH, originalFetch = globalThis.fetch;
+  process.env.PLACE_DB_PATH = resolve(directory, 'places.sqlite');
+  const manual = { ...place('manual:seongsu-cafe', 'cafe', { name: '수동 카페', address: '서울 성동구 성수이로 1', description: '검수한 설명' }),
+    source: '수동 검수', sourceUrl: 'https://example.com/manual', environmentSource: 'reviewed' as const };
+  try {
+    assert.equal(replaceCatalog(places.map(p => ({ ...p, id: `VisitSeoul:${p.id}` }))), 3);
+    assert.deepEqual(upsertPlaces([manual]), { inserted: 1, updated: 0 });
+    assert.equal(readPlaces('seongsu').length, 4);
+    const stored = readPlaces('seongsu').find(p => p.id === manual.id);
+    assert.equal(stored?.address, '서울 성동구 성수이로 1');
+    assert.equal(stored?.description, '검수한 설명');
+    assert.deepEqual(countPlacesByRegion().seongsu, { cafe: 2, restaurant: 1, activity: 1 });
+    // 같은 ID는 덮어쓰고, strict 모드에서는 거부한다.
+    assert.deepEqual(upsertPlaces([{ ...manual, name: '이름 수정' }]), { inserted: 0, updated: 1 });
+    assert.equal(readPlaces('seongsu').find(p => p.id === manual.id)?.name, '이름 수정');
+    assert.throws(() => upsertPlaces([manual], { strict: true }), /이미 있는 장소 ID/);
+    // 한 건이라도 잘못되면 아무것도 저장하지 않는다.
+    assert.throws(() => upsertPlaces([{ ...manual, id: 'manual:another' }, { ...manual, id: 'manual:bad', lat: 37.58 }]));
+    assert.throws(() => upsertPlaces([manual, manual]), /중복 장소 ID/);
+    assert.equal(readPlaces('seongsu').length, 4);
+    // 수동 장소는 외부 API 없이 인덱스 값으로 상세를 채우고, 비짓서울 ID 형식 오류는 여전히 거부한다.
+    globalThis.fetch = async () => { throw new Error('network must not be used'); };
+    const [detail] = await getPlaceDetails([stored!]);
+    assert.equal(detail.detailFailed, false);
+    assert.equal(detail.description, '검수한 설명');
+    await assert.rejects(getPlaceDetails([{ ...stored!, id: 'VisitSeoul:../../bad' }]));
+  } finally {
+    globalThis.fetch = originalFetch;
     if (old === undefined) delete process.env.PLACE_DB_PATH; else process.env.PLACE_DB_PATH = old;
     rmSync(directory, { recursive: true, force: true });
   }

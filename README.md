@@ -14,6 +14,8 @@ npm run build && npm start
 npm run lint && npm run typecheck
 npm run test               # 백엔드 단위 테스트
 npm run seed:sample        # 개발용 샘플 장소(성수·홍대)를 로컬 DB(data/places.sqlite)에 넣기
+npm run add:places -- 파일.json   # 기존 DB를 유지한 채 수동 검수 장소 추가(형식: data/manual-places.example.json)
+npm run gen:missing        # 장소가 부족한 동네 목록(data/missing-places.md)과 채워 넣기 템플릿(data/manual-places.todo.json) 생성
 npm run gen:regions        # spec.md 부록 A → config/regions.json (147개 동네)
 npm run validate:regions   # 동네·행정동 배정과 좌표 검증
 npm run collect:regions    # 공식 행정동 경계를 받아 지역 중심 좌표·경계(config/region-boundaries.json) 갱신
@@ -27,6 +29,7 @@ npm run collect:regions    # 공식 행정동 경계를 받아 지역 중심 좌
 - Node 버전은 `package.json`의 `engines.node = "24.x"` 로 고정한다(`node:sqlite` 사용).
 - Vercel은 `vercel-build` 스크립트를 실행한다. 이 스크립트는 `data/places.sqlite` 가 없으면 샘플 장소(성수·홍대)로 만든 뒤 `next build` 를 돌리고, `next.config.ts` 의 `outputFileTracingIncludes` 가 그 파일을 `/api/*` 함수 번들에 넣는다. 서버리스 파일시스템은 읽기 전용이라 런타임에서는 DB를 읽기 전용으로만 연다.
 - 실제 검수 장소를 배포하려면 빌드 전에 DB를 채우면 된다. 예: `vercel-build` 를 `npm run import:places -- data/places.json && npm run build` 처럼 바꾸고 검수 JSON 을 커밋한다.
+- 장소가 부족한 동네를 채우려면 `npm run add:places -- 파일.json` 으로 로컬 `data/places.sqlite` 에 추가한 뒤 그 파일을 커밋한다. 이 DB 파일이 그대로 배포되므로 별도 빌드 설정은 필요 없다. 자세한 형식은 [`data/README.md`](data/README.md) 를 본다.
 - 환경변수: `KAKAO_JAVASCRIPT_KEY`(지도), `KAKAO_REST_API_KEY`(주소 검색), `DATA_GO_KR_KEY`(날씨·대중교통). Kakao 개발자 콘솔의 플랫폼 도메인에 Vercel 도메인을 등록해야 지도가 뜬다.
 
 ## 구조
