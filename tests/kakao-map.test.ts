@@ -124,6 +124,13 @@ test('Kakao category search fills missing categories only with places inside the
     assert.equal(request!.url.searchParams.get('rect'), '127,37,128,38');
     assert.equal(request!.url.searchParams.get('page'), '2');
     assert.equal(request!.authorization, 'KakaoAK rest-key');
+    globalThis.fetch = async () => Response.json({ errorType: 'AccessDeniedError', message: 'wrong appKey(xxx) format' }, { status: 401 });
+    await assert.rejects(searchKakaoCategory('CE7', '127,37,128,38', 1), (error: unknown) =>
+      error instanceof Error && /HTTP 401 — AccessDeniedError: wrong appKey\(xxx\) format → .*REST API 키/.test(error.message)
+      && (error as { fatal?: boolean }).fatal === true);
+    globalThis.fetch = async () => new Response('<html>Service Unavailable</html>', { status: 503 });
+    await assert.rejects(searchKakaoCategory('CE7', '127,37,128,38', 1), (error: unknown) =>
+      error instanceof Error && error.message.includes('HTTP 503') && error.message.includes('Service Unavailable') && (error as { fatal?: boolean }).fatal === false);
   } finally {
     globalThis.fetch = originalFetch;
     if (oldKey === undefined) delete process.env.KAKAO_REST_API_KEY; else process.env.KAKAO_REST_API_KEY = oldKey;

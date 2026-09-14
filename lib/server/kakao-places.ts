@@ -5,7 +5,7 @@ import boundaries from '../../config/region-boundaries.json' with { type: 'json'
 import { placeIndexSchema, regions, type Category, type PlaceIndex } from '../contracts';
 import { locateRegion } from '../regions';
 import { inferEnvironment } from './collect';
-import { fetchJson } from './http';
+import { readResponseText } from './http';
 
 export const KAKAO_GROUPS: Record<Category, readonly string[]> = { cafe: ['CE7'], restaurant: ['FD6'], activity: ['CT1', 'AT4'] };
 const PAGE_SIZE = 15, MAX_PAGES = 3; // 카카오 카테고리 검색은 쿼리당 최대 45건(15건 × 3쪽)
@@ -68,7 +68,24 @@ export async function searchKakaoCategory(group: string, rect: string, page: num
   if (!key) throw new Error('KAKAO_REST_API_KEY 미설정 (.env.local)');
   const url = new URL('https://dapi.kakao.com/v2/local/search/category.json');
   url.search = new URLSearchParams({ category_group_code: group, rect, page: String(page), size: String(PAGE_SIZE) }).toString();
-  return pageSchema.parse(await fetchJson(url, { Authorization: `KakaoAK ${key}` }));
+  const response = await fetch(url, { headers: { Authorization: `KakaoAK ${key}` }, signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'error' });
+  const text = await readResponseText(response);
+  if (!response.ok) throw new KakaoPlacesError(response.status, text);
+  return pageSchema.parse(JSON.parse(text));
+}
+
+/** 카카오가 거부한 이유(HTTP 상태와 errorType·message)를 그대로 보여 준다. 401·403은 키·설정 문제라 재시도해도 같다. */
+export class KakaoPlacesError extends Error {
+  constructor(public status: number, body: string) {
+    let detail = body.replace(/\s+/g, ' ').trim().slice(0, 200);
+    try { const e = JSON.parse(body) as { errorType?: string; code?: unknown; message?: string; msg?: string }; detail = [e.errorType ?? e.code, e.message ?? e.msg].filter(Boolean).join(': '); } catch { /* JSON이 아니면 본문 앞부분 */ }
+    const hint = status === 401 ? ' → 카카오 개발자 콘솔의 "REST API 키"인지 확인하세요(JavaScript·네이티브 키 아님)'
+      : status === 403 ? ' → 카카오 개발자 콘솔 > 앱 > 카카오맵(로컬 API) 사용 설정을 켰는지 확인하세요'
+      : status === 429 ? ' → 일일 호출 한도 초과. 내일 다시 실행하세요' : '';
+    super(`카카오 로컬 API HTTP ${status}${detail ? ` — ${detail}` : ''}${hint}`);
+    this.name = 'KakaoPlacesError';
+  }
+  get fatal() { return this.status === 401 || this.status === 403 || this.status === 429; }
 }
 
 /** 한 동네에서 부족한 카테고리마다 최대 `perCategory`건을 모은다. 이미 있는 ID(`existing`)는 건너뛴다. */
