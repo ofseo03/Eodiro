@@ -194,6 +194,30 @@ test('provider XML preserves returned duration, missing time, mode restrictions 
   assert.equal(parseTransit(wrap(item), places[0], places[1], startAt, constraintsSchema.parse({ modes: ['subway'] }), 'mixed').status, 'no_route');
 });
 
+test('percent-encoded data.go.kr keys are decoded and weather failures log their cause', async () => {
+  const originalFetch = globalThis.fetch, originalError = console.error, oldKey = process.env.DATA_GO_KR_KEY;
+  process.env.DATA_GO_KR_KEY = 'abc%2Bdef%3D%3D';
+  const logged: string[] = [];
+  console.error = (message: unknown) => { logged.push(String(message)); };
+  const keys: string[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    keys.push(url.searchParams.get('serviceKey') ?? url.searchParams.get('ServiceKey') ?? '');
+    if (url.hostname === 'ws.bus.go.kr') return new Response('<ServiceResult><msgHeader><headerCd>0</headerCd></msgHeader><msgBody></msgBody></ServiceResult>');
+    return new Response('<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>');
+  };
+  try {
+    const result = await getWeather({ lat: 37.54, lng: 127.05 }, startAt, now);
+    assert.equal(result.status, 'unavailable');
+    assert.match(logged[0], /SERVICE_KEY_IS_NOT_REGISTERED_ERROR/);
+    await getRoute(places[0], places[1], startAt, constraintsSchema.parse({ modes: ['bus'] }));
+    assert.deepEqual(keys, ['abc+def==', 'abc+def==']);
+  } finally {
+    globalThis.fetch = originalFetch; console.error = originalError;
+    if (oldKey === undefined) delete process.env.DATA_GO_KR_KEY; else process.env.DATA_GO_KR_KEY = oldKey;
+  }
+});
+
 test('missing transit configuration fails explicitly but valid estimated walking still works', async () => {
   const old = process.env.DATA_GO_KR_KEY;
   delete process.env.DATA_GO_KR_KEY;
