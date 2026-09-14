@@ -4,11 +4,13 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "prepare:db": "node --env-file-if-exists=.env.local --import tsx scripts/prepare-db.ts",
+    "vercel-build": "npm run prepare:db && npm run build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
