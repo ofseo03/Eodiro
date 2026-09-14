@@ -100,7 +100,7 @@ export function CourseRequestForm() {
         <div>
           <h2 className="t-heading-md">코스 추천받기</h2>
           <p className="t-body-sm muted" style={{ marginTop: "var(--space-xxs)" }}>
-            {restored ? "마지막 입력값을 기본으로 채웠어요." : "출발 위치는 필요 없어요. 동네 안에서만 코스를 짜요."}
+            {restored ? "마지막 입력값을 기본으로 채웠어요." : "출발 위치는 필요 없어요. 선택한 구 안에서만 코스를 짜요."}
           </p>
         </div>
 
@@ -224,7 +224,7 @@ export function CourseRequestForm() {
         <div className="card-icon-feature">
           <h3 className="t-subtitle-lg" style={{ fontFeatureSettings: "normal" }}>이렇게 골라요</h3>
           <ul className="stack" style={{ gap: "var(--space-xs)", marginTop: "var(--space-xs)" }}>
-            <li className="t-body-sm charcoal">1. 동네 안에서 취향에 맞는 카페·식당·놀거리 후보를 모아요.</li>
+            <li className="t-body-sm charcoal">1. 선택한 구 안에서 취향에 맞는 카페·식당·놀거리 후보를 모아요.</li>
             <li className="t-body-sm charcoal">2. 선택한 실내·실외 조건 안에서 방문 시각의 날씨를 반영해요.</li>
             <li className="t-body-sm charcoal">3. 허용한 교통수단으로만 구간을 잇고, 이동시간 상한 안에서 순서를 정해요.</li>
           </ul>

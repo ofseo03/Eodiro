@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { districts } from '../districts';
 import { placeSchema, placeIndexSchema, type Place, type PlaceIndex } from '../contracts';
 
 const SCHEMA = 'CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY, region_id TEXT, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS places_region ON places(region_id);';
@@ -29,7 +30,8 @@ function openReadableDb() {
 export function readPlaces(regionId: string): Place[] {
   const db = openReadableDb();
   try {
-    return db.prepare('SELECT payload FROM places WHERE region_id = ? ORDER BY id').all(regionId)
+    const regionIds = districts.find(district => district.id === regionId)?.regionIds ?? [regionId];
+    return db.prepare(`SELECT payload FROM places WHERE region_id IN (${regionIds.map(() => '?').join(',')}) ORDER BY id`).all(...regionIds)
       .map(row => placeIndexSchema.parse(JSON.parse(String(row.payload))))
       .filter(p => p.category !== null && p.lat !== null && p.lng !== null)
       .map(p => placeSchema.parse(Object.fromEntries(Object.keys(placeSchema.shape).filter(key => key in p)

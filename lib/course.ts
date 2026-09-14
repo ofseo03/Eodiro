@@ -1,5 +1,6 @@
 import { preferencesSchema, requestSchema, type Course, type CourseRequest, type Place, type Preferences, type RouteResolver, type Visit, type Weather } from './contracts';
 import { distanceMeters } from './geo';
+import { matchesRegion } from './districts';
 import { taxiAlternative } from './routing';
 import { canFollow } from './composition';
 
@@ -80,7 +81,7 @@ export async function recommend(
 ): Promise<Recommendation> {
   const request = requestSchema.parse(input), prefs = preferencesSchema.parse(preferences);
   if (Date.parse(request.startAt) < now.getTime()) throw new Error('방문 시각은 현재 이후여야 합니다');
-  const regional = places.filter(p => p.regionId === request.regionId);
+  const regional = places.filter(p => matchesRegion(p, request.regionId));
   const excluded = new Set(excludedIds);
   const candidates = candidatePool(regional.filter(p => !excluded.has(p.id)), request, prefs, weather);
   if (!candidates) {
@@ -159,7 +160,7 @@ export function replacementCandidates(course: Course, index: number, places: Pla
   if (![100, 300, 500].includes(radius) || !Number.isInteger(index) || !course.visits[index]) throw new Error('잘못된 교체 요청입니다');
   const prefs = preferencesSchema.parse(preferences), original = course.visits[index].place;
   const current = new Set(course.visits.map(v => v.place.id));
-  const nearby = places.filter(p => p.regionId === course.request.regionId && p.category === original.category && !current.has(p.id)
+  const nearby = places.filter(p => matchesRegion(p, course.request.regionId) && p.category === original.category && !current.has(p.id)
     && distanceMeters(original, p) <= radius && openingStatus(p, course.visits[index].arrivalAt) !== 'closed');
   const request = { ...course.request, counts: { cafe: 0, restaurant: 0, activity: 0, [original.category]: 1 } };
   const pool = candidatePool(nearby, request, prefs, course.weather)?.pool ?? [];

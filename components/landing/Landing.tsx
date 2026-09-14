@@ -87,7 +87,7 @@ export function Landing() {
           </details>
           <details className="faq-accordion-item">
             <summary className="t-subtitle-lg">우리 동네도 되나요? <ChevronDownIcon /></summary>
-            <p className="t-body-md charcoal">서울의 모든 행정동이 {TOWN_COUNT}개 동네 중 하나에 속해요. 장소 데이터가 부족한 동네는 회색으로 표시되고 부족한 카테고리를 알려 드립니다.</p>
+            <p className="t-body-md charcoal">서울 25개 자치구 중 하나를 고르면 구 전체에서 코스를 추천해요. 장소 데이터가 부족한 구는 회색으로 표시되고 부족한 카테고리를 알려 드립니다.</p>
           </details>
         </div>
       </section>

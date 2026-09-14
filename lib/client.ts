@@ -21,7 +21,7 @@ export const routeResolver: RouteResolver = async (from, to, referenceAt, constr
     exceeded = { ...leg, minutes: null };
   }
   if (!constraints.modes.some(m => m === 'bus' || m === 'subway')) return exceeded ?? emptyLeg(from, to, referenceAt);
-  try { return await api('routes', { regionId: from.regionId, fromId: from.id, toId: to.id, referenceAt, constraints }); }
+  try { return await api('routes', { regionId: from.regionId === to.regionId ? from.regionId : from.district, fromId: from.id, toId: to.id, referenceAt, constraints }); }
   catch { return { ...emptyLeg(from, to, referenceAt), status: 'route_failed', reason: '경로 조회 실패' }; }
 };
 
