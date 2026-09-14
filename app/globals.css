@@ -167,7 +167,7 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .sheet { background: var(--color-canvas); border-radius: var(--rounded-xxl) var(--rounded-xxl) 0 0; box-shadow: var(--shadow-2); padding: var(--space-xl); }
 .sheet .handle { width: 40px; height: 4px; border-radius: var(--rounded-full); background: var(--color-hairline); margin: 0 auto var(--space-base); }
 .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-base); }
-.sheet .desc { margin: var(--space-xs) 0 var(--space-base); }
+.sheet .desc { margin: var(--space-xs) 0 var(--space-base); display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .specs { border-top: 1px solid var(--color-hairline-soft); }
 .specs div { display: flex; justify-content: space-between; gap: var(--space-base); padding: var(--space-sm) 0; border-bottom: 1px solid var(--color-hairline-soft); }
 .specs b { font: var(--type-body-sm-bold); }
