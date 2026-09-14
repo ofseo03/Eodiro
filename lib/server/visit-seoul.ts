@@ -137,9 +137,11 @@ export function textContent(value: string) {
     .replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** Only enrich the places already chosen from the SQLite recommendation index. */
+/** Only enrich the places already chosen from the SQLite recommendation index.
+ * 수동 추가 장소(비짓서울 외 ID)는 인덱스의 주소·설명을 그대로 쓰고 외부 API를 호출하지 않는다. */
 export async function getPlaceDetails(places: Place[]): Promise<Place[]> {
   return Promise.all(places.map(async place => {
+    if (!place.id.startsWith('VisitSeoul:')) return { ...place, detailFailed: false };
     const cid = place.id.match(/^VisitSeoul:([A-Za-z0-9]+)$/)?.[1];
     if (!cid) throw new VisitSeoulError(400, 'VISITSEOUL_INVALID_CID');
     try {

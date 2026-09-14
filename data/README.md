@@ -15,7 +15,7 @@ CREATE TABLE places (
 CREATE INDEX places_region ON places(region_id);
 ```
 
-`id`는 `VisitSeoul:콘텐츠CID`, `region_id`는 아래 `payload.regionId`와 같아야 합니다. 매핑되지 않으면 SQL `NULL`입니다. `payload`는 다음 JSON 객체를 UTF-8 TEXT로 저장합니다. 실제 검증 기준은 `lib/contracts.ts`의 `placeIndexSchema`입니다.
+`id`는 비짓서울 콘텐츠면 `VisitSeoul:콘텐츠CID`, 수동 추가 장소면 `manual:원하는-식별자` 형식입니다. `region_id`는 아래 `payload.regionId`와 같아야 합니다. 매핑되지 않으면 SQL `NULL`입니다. `payload`는 다음 JSON 객체를 UTF-8 TEXT로 저장합니다. 실제 검증 기준은 `lib/contracts.ts`의 `placeIndexSchema`입니다.
 
 | payload 필드 | 값 / 의미 |
 |---|---|
@@ -39,8 +39,9 @@ CREATE INDEX places_region ON places(region_id);
 | `detailStatus` | `pending`(미수집), `ok`(상세 수집 성공), `failed`(조회·형식 실패). 추천 여부가 아님 |
 | `source`, `sourceUrl` | 출처 이름과 공개 콘텐츠 URL |
 | `collectedAt` | 해당 인덱스 행 작성 시각, 시간대가 있는 ISO 문자열 |
+| `address`, `description` | **수동 추가 장소에만** 저장. 비짓서울 콘텐츠는 저장 시 빈 문자열로 지워집니다 |
 
-설명·주소 본문과 API 키는 저장하지 않습니다. 설명·주소는 추천 ID가 결정된 후 상세 API로 조회합니다. **영업시간·휴무·행사 기간은 추천 전에 필요하므로 인덱스에 보존합니다.**
+비짓서울 콘텐츠의 설명·주소 본문과 API 키는 저장하지 않습니다. 설명·주소는 추천 ID가 결정된 후 상세 API로 조회합니다. 수동 추가 장소는 상세 API가 없으므로 인덱스의 `address`·`description`을 그대로 결과 화면에 씁니다. **영업시간·휴무·행사 기간은 추천 전에 필요하므로 인덱스에 보존합니다.**
 
 ## 영업시간 형식
 
@@ -63,6 +64,22 @@ CREATE INDEX places_region ON places(region_id);
 4. 선택된 ID만 상세 API로 보완합니다. 교체 시에는 새 ID만 조회합니다.
 
 카테고리 매핑은 모든 ID에 동일하게 적용됩니다. API 음식 분류 중 카페/찻집은 카페, 다른 음식 분류는 식당, 문화·자연·역사·쇼핑·체험·축제/공연/행사는 놀거리입니다. 숙박 등 세 범주 밖이거나 분류를 알 수 없는 콘텐츠는 `category: null`로 보존합니다. 실내외 추론은 `environmentSource: inferred`로 구분합니다.
+
+## 부족한 동네에 장소 추가하기
+
+홈에서 회색으로 표시되는 동네는 카페·식당·놀거리 중 하나라도 0개인 곳입니다. 기존 인덱스를 지우지 않고 장소만 보태려면:
+
+```bash
+npm run add:places -- 추가-장소.json            # 같은 ID가 있으면 덮어씀
+npm run add:places -- 추가-장소.json --strict   # 같은 ID가 있으면 아무것도 저장하지 않음
+```
+
+- 형식은 [`manual-places.example.json`](manual-places.example.json)과 같은 JSON 배열입니다. `id`, `name`, `regionId`, `district`, `dong`, `category`, `lat`, `lng`, `source`, `sourceUrl`, `collectedAt`은 필수이고 나머지는 생략하면 "미확인"으로 저장됩니다.
+- `id`는 `manual:`로 시작하는 고유 문자열을 씁니다. 비짓서울 ID와 겹치지 않게 하고, 한 번 정한 ID는 바꾸지 않아야 덮어쓰기가 됩니다.
+- `lat`·`lng`는 해당 동네 행정동 경계 안에 있어야 하며, `district`·`dong`은 `config/regions.json`의 값과 정확히 같아야 합니다. 벗어나면 어느 항목이 문제인지 출력하고 아무것도 저장하지 않습니다.
+- 수동 장소는 `address`·`description`이 결과 화면에 그대로 나오므로 채워 두는 것이 좋습니다. `environmentSource`는 직접 확인했으면 `reviewed`로 둡니다.
+- 저장 후 해당 동네의 카테고리별 개수와 아직 부족한 카테고리를 출력합니다. 세 카테고리가 모두 1개 이상이면 홈에서 선택할 수 있게 됩니다.
+- 갱신된 `data/places.sqlite`를 커밋해야 배포에 반영됩니다.
 
 ## 다른 컴퓨터에서 파일 만들기
 

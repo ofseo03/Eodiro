@@ -53,6 +53,25 @@ export function countPlacesByRegion(): Availability {
   } finally { db.close(); }
 }
 
+/** 기존 인덱스를 유지한 채 장소를 추가한다(수동 검수 장소용). 같은 ID가 있으면 덮어쓰고, `strict`면 오류로 거부한다.
+ * 한 건이라도 형식이 틀리면 전체를 저장하지 않는다. */
+export function upsertPlaces(input: unknown, options: { strict?: boolean } = {}) {
+  const places = placeIndexSchema.array().min(1).parse(input);
+  if (new Set(places.map(p => p.id)).size !== places.length) throw new Error('중복 장소 ID');
+  const db = openWritableDb();
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    const exists = db.prepare('SELECT 1 FROM places WHERE id = ?');
+    const existing = places.filter(p => exists.get(p.id) !== undefined).map(p => p.id);
+    if (options.strict && existing.length) throw new Error(`이미 있는 장소 ID: ${existing.join(', ')}`);
+    const statement = db.prepare('INSERT INTO places (id, region_id, payload) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET region_id = excluded.region_id, payload = excluded.payload');
+    for (const place of places) statement.run(place.id, place.regionId, JSON.stringify(place));
+    db.exec('COMMIT');
+    return { inserted: places.length - existing.length, updated: existing.length };
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
+  finally { db.close(); }
+}
+
 export function replaceCatalog(input: unknown) {
   const places = placeIndexSchema.array().min(1).parse(input);
   if (new Set(places.map(p => p.id)).size !== places.length) throw new Error('중복 장소 ID');
