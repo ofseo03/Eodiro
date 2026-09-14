@@ -11,6 +11,7 @@ test('Visit Seoul and Seoul Open Data use separate keys, endpoints and content i
   process.env.SEOUL_API_KEY = 'seoul-only';
   const calls: string[] = [];
   let fail = false, missingCoordinates = false, duplicateIds = false;
+  let eventFrom = '', eventUntil = '';
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input)), headers = new Headers(init?.headers);
     calls.push(url.hostname);
@@ -38,6 +39,7 @@ test('Visit Seoul and Seoul Open Data use separate keys, endpoints and content i
     assert.equal(url.pathname, '/api/v1/contents/info');
     assert(['KO1', 'KO2'].includes(params.cid));
     return Response.json({ result_code: 200, data: { cid: params.cid, lang_code_id: 'ko', post_sj: '카페', cate_depth: '음식 > 카페/찻집',
+      schdul_info_bgnde: eventFrom, schdul_info_endde: eventUntil,
       post_desc: '<p>조용한 카페</p>', extra: { cmmn_use_time: '10:00~20:00' },
       traffic: { new_adres: '서울 성동구', map_position_x: missingCoordinates ? '' : '127.054', map_position_y: '37.544' } } });
   };
@@ -54,6 +56,27 @@ test('Visit Seoul and Seoul Open Data use separate keys, endpoints and content i
     assert.equal(details[0].description, '조용한 카페');
     assert.equal(details[0].hoursText, '10:00~20:00');
     assert.equal(details[0].address, '서울 성동구');
+    eventFrom = '2030.01.02'; eventUntil = '2030-01-03';
+    const [event] = await getPlaceDetails([selected]);
+    assert.equal(event.availableFrom, '2030-01-02');
+    assert.equal(event.availableUntil, '2030-01-03');
+    eventFrom = ''; eventUntil = '';
+    assert.equal((await getPlaceDetails([event]))[0].availableUntil, '2030-01-03');
+    eventUntil = 'invalid';
+    assert.equal((await getPlaceDetails([selected]))[0].detailFailed, true);
+    eventFrom = '2030-01-03'; eventUntil = '2030-01-02';
+    assert.equal((await getPlaceDetails([selected]))[0].detailFailed, true);
+    eventFrom = ''; eventUntil = '';
+    const providerFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => JSON.parse(String(init?.body)).cid === 'KO2'
+      ? Response.json({ message: 'provider error' }, { status: 500 }) : providerFetch(input, init);
+    const partial = await getPlaceDetails([selected, { ...selected, id: 'VisitSeoul:KO2' }]);
+    assert.equal(partial[0].detailFailed, false);
+    assert.equal(partial[0].description, '조용한 카페');
+    assert.equal(partial[1].detailFailed, true);
+    assert.equal(partial[1].id, 'VisitSeoul:KO2');
+    assert.equal(partial[1].lat, selected.lat);
+    globalThis.fetch = providerFetch;
     await assert.rejects(getPlaceDetails([{ ...selected, id: 'VisitSeoul:../../bad' }]));
     missingCoordinates = true;
     assert.equal((await getVisitSeoulDetail('KO1')).location, null);

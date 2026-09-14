@@ -65,6 +65,7 @@ function toIndoor(env: BackendPlace["environment"]): Place["indoor"] {
 function toPlace(v: Visit, pin: { x: number; y: number }): Place {
   const p = v.place;
   const flags: Place["flags"] = [];
+  if (p.detailFailed) flags.push("상세 조회 실패");
   if (v.outsidePreference) flags.push("취향 외");
   if (v.openingStatus === "hours_unknown" || (v.openingStatus === "arrival_unknown" && !p.hours)) flags.push("운영시간 미확인");
   if (!p.atmospheres.length) flags.push("분위기 미확인");

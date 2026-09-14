@@ -47,6 +47,7 @@ export const placeSchema = z.strictObject({
   regionId: regionIdSchema, district: z.string(), dong: z.string(),
   category: categorySchema, lat: z.number().min(37.4).max(37.72), lng: z.number().min(126.75).max(127.2),
   address: z.string().default(''), description: z.string().default(''),
+  detailFailed: z.boolean().optional(),
   food: foodSchema.nullable().default(null), activity: activitySchema.nullable().default(null),
   environment: environmentSchema.default('unknown'),
   environmentSource: z.enum(['source', 'inferred', 'reviewed']).default('inferred'),
@@ -60,7 +61,7 @@ export const placeSchema = z.strictObject({
   '장소의 행정동이 선택 지역에 속하지 않습니다');
 
 // Every source ID is retained; unresolved fields cannot satisfy an explicit search filter.
-export const placeIndexSchema = z.object(placeSchema.shape).omit({ address: true, description: true }).extend({
+export const placeIndexSchema = z.object(placeSchema.shape).omit({ address: true, description: true, detailFailed: true }).extend({
   regionId: regionIdSchema.nullable().default(null), district: z.string().default(''), dong: z.string().default(''),
   category: categorySchema.nullable().default(null),
   lat: z.number().min(-90).max(90).nullable().default(null), lng: z.number().min(-180).max(180).nullable().default(null),

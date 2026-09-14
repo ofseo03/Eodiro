@@ -312,6 +312,79 @@ test('replacement fetches details only for the chosen ID; failed recommendation 
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test('detail failures preserve the course and mark only failed places, including replacements', async () => {
+  const originalFetch = globalThis.fetch, replacement = place('new-cafe', 'cafe');
+  const catalog = [...places, replacement];
+  let allFailed = false;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('/api/places?')) return Response.json({ places: catalog });
+    if (String(url).startsWith('/api/weather?')) return Response.json(weather);
+    assert.equal(String(url), '/api/places/details');
+    const { placeIds } = JSON.parse(String(init?.body));
+    return Response.json({ places: catalog.filter(p => placeIds.includes(p.id))
+      .map(p => ({ ...p, detailFailed: allFailed || p.id === 'r' || p.id === replacement.id })) });
+  };
+  try {
+    for (allFailed of [false, true]) {
+      const result = await createCourse({ ...normal, constraints: { modes: ['walk'] } });
+      assert.equal(result.status, 'ok');
+      if (result.status !== 'ok') throw new Error('expected course');
+      const view = toCourse(result.course, 'any');
+      assert.equal(view.places.length, 3);
+      assert.equal(view.places.filter(p => p.flags.includes('상세 조회 실패')).length, allFailed ? 3 : 1);
+      const index = result.course.visits.findIndex(v => v.place.category === 'cafe');
+      const replaced = await applyReplacement(result.course, index, replacement.id);
+      assert.equal(replaced.visits[index].place.id, replacement.id);
+      assert.equal(replaced.visits[index].place.detailFailed, true);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('fresh event dates reject unavailable selections, reuse details, and bound recommendation retries', async () => {
+  const originalFetch = globalThis.fetch;
+  const alternatives = ['b', 'd', 'e'].map(id => place(id, 'activity'));
+  const catalog = [...places, ...alternatives];
+  const course = summarizeCourse(places, [await walk(places[0], places[1], startAt, normal.constraints),
+    await walk(places[1], places[2], startAt, normal.constraints)], normal, weather, prefs);
+  let mode = 'expired';
+  let detailIds: string[][] = [];
+  globalThis.fetch = async (url, init) => {
+    if (String(url).startsWith('/api/places?')) return Response.json({ places: mode === 'exhausted' ? places : catalog });
+    if (String(url).startsWith('/api/weather?')) return Response.json(weather);
+    assert.equal(String(url), '/api/places/details');
+    const { placeIds: ids } = JSON.parse(String(init?.body));
+    detailIds.push(ids);
+    return Response.json({ places: catalog.filter(p => ids.includes(p.id)).map(p => ({ ...p,
+      ...(p.category === 'activity' && (p.id === 'a' || mode === 'limit' || mode === 'replacement')
+        ? mode === 'future' ? { availableFrom: '2030-01-03' }
+          : mode === 'boundary' ? { availableFrom: '2030-01-02', availableUntil: '2030-01-02' }
+          : { availableUntil: '2030-01-01' } : {}),
+    })) });
+  };
+  try {
+    for (mode of ['expired', 'future', 'boundary', 'exhausted', 'limit']) {
+      detailIds = [];
+      const result = await createCourse({ ...normal, constraints: { modes: ['walk'] } });
+      if (mode === 'limit') { assert.equal(result.status, 'search_limit'); assert.equal(detailIds.length, 3); }
+      else if (mode === 'exhausted') { assert.notEqual(result.status, 'ok'); assert.equal(detailIds.length, 1); }
+      else {
+        assert.equal(result.status, 'ok');
+        if (result.status === 'ok') {
+          assert(result.course.visits.every(v => v.openingStatus !== 'closed'));
+          assert.equal(result.course.visits.some(v => v.place.id === 'a'), mode === 'boundary');
+        }
+        assert.equal(detailIds.length, mode === 'boundary' ? 1 : 2);
+        if (detailIds.length === 2) assert.deepEqual(detailIds[1], ['b']);
+      }
+      assert.equal(new Set(detailIds.flat()).size, detailIds.flat().length);
+    }
+    mode = 'replacement'; detailIds = [];
+    await assert.rejects(applyReplacement(course, 2, 'b'), { code: 'PLACE_UNAVAILABLE' });
+    assert.deepEqual(detailIds, [['b']]);
+    assert.equal(course.visits[2].place.id, 'a');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('collector paginates source rows even when an entire page is not Korean', async () => {
   const originalFetch = globalThis.fetch, key = process.env.SEOUL_API_KEY;
   process.env.SEOUL_API_KEY = 'test-only';

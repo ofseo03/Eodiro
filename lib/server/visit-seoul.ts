@@ -142,8 +142,22 @@ export async function getPlaceDetails(places: Place[]): Promise<Place[]> {
   return Promise.all(places.map(async place => {
     const cid = place.id.match(/^VisitSeoul:([A-Za-z0-9]+)$/)?.[1];
     if (!cid) throw new VisitSeoulError(400, 'VISITSEOUL_INVALID_CID');
-    const info = await getVisitSeoulDetail(cid);
-    return placeSchema.parse({ ...place, name: textContent(info.name), address: textContent(info.address),
-      description: textContent(info.description), hoursText: textContent(info.hoursText) });
+    try {
+      const info = await getVisitSeoulDetail(cid);
+      const date = (value: string, fallback: string | null) => {
+        if (!value.trim()) return fallback;
+        const parsed = z.iso.date().safeParse(value.trim().replaceAll('.', '-'));
+        if (!parsed.success) throw new VisitSeoulError(502, 'VISITSEOUL_INVALID_RESPONSE');
+        return parsed.data;
+      };
+      const availableFrom = date(info.availableFrom, place.availableFrom);
+      const availableUntil = date(info.availableUntil, place.availableUntil);
+      if (availableFrom && availableUntil && availableFrom > availableUntil) throw new VisitSeoulError(502, 'VISITSEOUL_INVALID_RESPONSE');
+      return placeSchema.parse({ ...place, name: textContent(info.name), address: textContent(info.address),
+        description: textContent(info.description), hoursText: textContent(info.hoursText), availableFrom, availableUntil, detailFailed: false });
+    } catch (error) {
+      if (!(error instanceof VisitSeoulError) && !(error instanceof z.ZodError)) throw error;
+      return { ...place, detailFailed: true };
+    }
   }));
 }

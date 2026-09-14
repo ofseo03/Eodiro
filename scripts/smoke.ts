@@ -62,7 +62,9 @@ try {
   assert.equal(evaluated.status, 503); assert.equal(evaluated.data.error.code, 'VISITSEOUL_NOT_CONFIGURED');
   assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['nonexistent'] })).status, 400);
   assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0', 'VisitSeoul:TEST0'] })).status, 400);
-  assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0'] })).data.error.code, 'VISITSEOUL_NOT_CONFIGURED');
+  const detail = await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0'] });
+  assert.equal(detail.status, 200);
+  assert.equal(detail.data.places[0].detailFailed, true);
   assert.equal((await call('courses/evaluate', { request: { regionId: 'seongsu', startAt: '2000-01-01T00:00:00Z' }, placeIds: places.map(p => p.id) })).status, 400);
   assert.equal((await call('missing')).status, 404);
   assert.equal((await call('capabilities')).data.transit.liveVerified, false);

@@ -41,7 +41,7 @@ export const MAX_PLACES = 5;
 export const MAX_WALK_METERS = 1000;
 
 export type LegStatus = "확정 충족" | "실측" | "추정" | "택시 이용 검토" | "경로 없음" | "경로 조회 실패";
-export type PlaceFlag = "취향 외" | "운영시간 미확인" | "분위기 미확인" | "실외 포함";
+export type PlaceFlag = "취향 외" | "운영시간 미확인" | "분위기 미확인" | "실외 포함" | "상세 조회 실패";
 
 export type Place = {
   id: string;
