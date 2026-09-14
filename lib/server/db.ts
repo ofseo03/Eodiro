@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { placeSchema, placeIndexSchema, type Place } from '../contracts';
+import { placeSchema, placeIndexSchema, type Place, type PlaceIndex } from '../contracts';
 
 const SCHEMA = 'CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY, region_id TEXT, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS places_region ON places(region_id);';
 
@@ -42,6 +42,28 @@ export function readPlaceIds() {
   if (!existsSync(dbPath())) return new Set<string>();
   const db = openReadableDb();
   try { return new Set(db.prepare('SELECT id FROM places').all().map(row => String(row.id))); }
+  finally { db.close(); }
+}
+
+/** 모든 행을 인덱스 형식으로 읽는다(카테고리·좌표 미확인 행 포함). 점검·정리 스크립트용. */
+export function readAllPlaces(): PlaceIndex[] {
+  const db = openReadableDb();
+  try { return db.prepare('SELECT payload FROM places ORDER BY id').all().map(row => placeIndexSchema.parse(JSON.parse(String(row.payload)))); }
+  finally { db.close(); }
+}
+
+/** ID 목록을 한 트랜잭션으로 삭제한다. 삭제된 행 수를 돌려준다. */
+export function deletePlaces(ids: string[]) {
+  if (!ids.length) return 0;
+  const db = openWritableDb();
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    const statement = db.prepare('DELETE FROM places WHERE id = ?');
+    let deleted = 0;
+    for (const id of ids) deleted += Number(statement.run(id).changes);
+    db.exec('COMMIT');
+    return deleted;
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
   finally { db.close(); }
 }
 

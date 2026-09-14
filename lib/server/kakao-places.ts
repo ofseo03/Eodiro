@@ -19,13 +19,21 @@ export const kakaoDocumentSchema = z.object({
 const pageSchema = z.object({ documents: z.array(kakaoDocumentSchema), meta: z.object({ is_end: z.boolean() }) });
 export type KakaoDocument = z.infer<typeof kakaoDocumentSchema>;
 
-/** 카카오 category_name(예: "음식점 > 한식 > 육류,고기")을 서비스 분류로 바꾼다. 요청 카테고리에 맞지 않으면 null. */
-export function classifyKakao(categoryName: string, wanted: Category): { category: Category; food: PlaceIndex['food']; activity: PlaceIndex['activity'] } | null {
+/** 코스에 맞지 않는 곳. 이름에 이 말이 들어가면 분류와 관계없이 제외한다. */
+const EXCLUDED_NAME = /키즈\s*카페|키즈카페|만화카페|만화방|보드게임|보드카페|룸카페|스터디카페|PC방|피시방|무인카페|애견카페|반려동물/i;
+
+/** 카카오 category_name(예: "음식점 > 한식 > 육류,고기")을 서비스 분류로 바꾼다. 요청 카테고리에 맞지 않으면 null.
+ * 카페는 "음식점 > 카페" 계열만 인정한다. 키즈카페·만화카페·보드카페는 "가정,생활" 아래에 있어 자연히 빠진다. */
+export function classifyKakao(categoryName: string, wanted: Category, name = ''): { category: Category; food: PlaceIndex['food']; activity: PlaceIndex['activity'] } | null {
+  if (EXCLUDED_NAME.test(name)) return null;
   const parts = categoryName.split('>').map(p => p.trim());
   const has = (...terms: string[]) => parts.some(p => terms.some(t => p.includes(t)));
-  if (wanted === 'cafe') return has('카페', '디저트', '제과', '베이커리', '찻집') ? { category: 'cafe', food: '카페 디저트', activity: null } : null;
+  if (wanted === 'cafe') {
+    if (parts[0] !== '음식점' || !has('카페', '디저트', '제과', '베이커리', '찻집')) return null;
+    return { category: 'cafe', food: '카페 디저트', activity: null };
+  }
   if (wanted === 'restaurant') {
-    if (parts[0] !== '음식점' || has('카페', '술집', '뷔페')) return null;
+    if (parts[0] !== '음식점' || has('카페', '술집', '뷔페', '구내식당', '패스트푸드', '제과', '베이커리')) return null;
     const food = has('한식') ? '한식' : has('양식') ? '양식' : has('일식') ? '일식' : has('중식') ? '중식' : has('아시아') ? '아시안' : '기타';
     return { category: 'restaurant', food, activity: null };
   }
@@ -50,7 +58,7 @@ export function regionRects(regionId: string) {
 export function toManualPlace(doc: KakaoDocument, regionId: string, wanted: Category, collectedAt: string): PlaceIndex | null {
   const located = locateRegion({ lat: doc.y, lng: doc.x });
   if (located?.regionId !== regionId) return null;
-  const classified = classifyKakao(doc.category_name, wanted);
+  const classified = classifyKakao(doc.category_name, wanted, doc.place_name);
   if (!classified) return null;
   const detail = doc.category_name.split('>').map(p => p.trim()).filter(Boolean).slice(1).join(' · ');
   return placeIndexSchema.parse({
@@ -108,4 +116,10 @@ export async function collectKakaoPlaces(regionId: string, missing: Category[], 
     }
   }
   return found;
+}
+
+/** 이미 저장된 카카오 장소가 현재 규칙으로도 통과하는지. 규칙을 조인 뒤 prune:kakao 로 걸러내는 데 쓴다. */
+export function passesKakaoRules(place: Pick<PlaceIndex, 'id' | 'name' | 'category' | 'sourceCategory'>) {
+  if (!place.id.startsWith('manual:kakao-') || place.category === null) return true;
+  return classifyKakao(place.sourceCategory, place.category, place.name) !== null;
 }

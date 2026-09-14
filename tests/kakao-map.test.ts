@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getKakaoMapConfig, kakaoGeocode, kakaoGeocodeQuerySchema, kakaoReverseGeocode, kakaoReverseGeocodeQuerySchema } from '../lib/server/kakao-map';
-import { classifyKakao, collectKakaoPlaces, regionRects, searchKakaoCategory, toManualPlace } from '../lib/server/kakao-places';
+import { classifyKakao, collectKakaoPlaces, passesKakaoRules, regionRects, searchKakaoCategory, toManualPlace } from '../lib/server/kakao-places';
 
 test('Kakao map validates queries, separates keys and handles address results and provider failures', async () => {
   for (const input of [{ address: '' }, { address: ' ' }, { address: 'Seoul', key: 'secret' }]) {
@@ -70,6 +70,17 @@ test('Kakao category search fills missing categories only with places inside the
   assert.deepEqual(classifyKakao('음식점 > 아시아음식 > 베트남음식', 'restaurant'), { category: 'restaurant', food: '아시안', activity: null });
   assert.equal(classifyKakao('음식점 > 술집 > 호프,요리주점', 'restaurant'), null);
   assert.equal(classifyKakao('음식점 > 카페 > 커피전문점', 'restaurant'), null);
+  assert.equal(classifyKakao('가정,생활 > 유아 > 놀이시설 > 키즈카페 > 서울형키즈카페', 'cafe'), null);
+  assert.equal(classifyKakao('가정,생활 > 여가시설 > 만화방 > 만화카페 > 놀숲', 'cafe'), null);
+  assert.equal(classifyKakao('가정,생활 > 여가시설 > 보드카페', 'cafe'), null);
+  assert.equal(classifyKakao('음식점 > 카페', 'cafe', '우리끼리 키즈 카페 마곡점'), null);
+  assert.equal(classifyKakao('음식점 > 구내식당 > 밥플러스', 'restaurant'), null);
+  assert.equal(classifyKakao('음식점 > 패스트푸드 > 롯데리아', 'restaurant'), null);
+  assert.equal(classifyKakao('음식점 > 간식 > 제과,베이커리', 'restaurant'), null);
+  assert.deepEqual(classifyKakao('음식점 > 간식 > 제과,베이커리', 'cafe'), { category: 'cafe', food: '카페 디저트', activity: null });
+  assert.equal(passesKakaoRules({ id: 'manual:kakao-1', name: '서울형키즈카페 홍제점', category: 'cafe', sourceCategory: '가정,생활 > 유아 > 놀이시설 > 키즈카페' }), false);
+  assert.equal(passesKakaoRules({ id: 'manual:kakao-2', name: '동네 카페', category: 'cafe', sourceCategory: '음식점 > 카페' }), true);
+  assert.equal(passesKakaoRules({ id: 'VisitSeoul:KO1', name: '키즈카페', category: 'cafe', sourceCategory: '' }), true, 'only Kakao-sourced rows are pruned');
   assert.deepEqual(classifyKakao('문화,예술 > 문화시설 > 미술관', 'activity'), { category: 'activity', food: null, activity: '전시' });
   assert.deepEqual(classifyKakao('여행 > 관광,명소 > 공원', 'activity'), { category: 'activity', food: null, activity: '공원' });
   assert.equal(classifyKakao('음식점 > 한식', 'activity'), null);
