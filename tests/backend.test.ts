@@ -7,7 +7,7 @@ import { recommend, openingStatus, replacePlace, replacementCandidates, retryLeg
 import { MAX_PER_CATEGORY, compositionProblem, orderAllowed } from '../lib/composition';
 import { distanceMeters, forecastGrid } from '../lib/geo';
 import { getRoute, parseTransit } from '../lib/server/routes';
-import { emptyLeg, estimatedLeg, memoizeRoutes, walkingLeg } from '../lib/routing';
+import { emptyLeg, memoizeRoutes, walkingLeg } from '../lib/routing';
 import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
 import { countPlacesByRegion, deletePlaces, readAllPlaces, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
@@ -152,45 +152,35 @@ test('reroll exclusions are honored and exhaustion is distinguished from impossi
   assert.equal((await recommend(normal, places, weather, tooLong, {}, [], now)).status, 'no_course');
 });
 
-test('transit search estimates during DFS and fetches only the chosen legs, in parallel, once per pair', async () => {
+test('nearest-first transit search looks up each pair once and costs one lookup per leg when every leg fits', async () => {
   // Every pair is beyond walking range, so each leg needs a transit lookup.
   const spread = [[37.535, 127.05], [37.535, 127.056], [37.537, 127.061], [37.539, 127.052], [37.54, 127.057], [37.543, 127.053]];
   const far = spread.map(([lat, lng], i) => place(`p${i}`, (['cafe', 'restaurant', 'activity'] as const)[i % 3], { lat, lng }));
   assert(far.every((a, i) => far.every((b, j) => i === j || distanceMeters(a, b) * 1.3 > 500)));
   const input = request({ counts: { cafe: 2, restaurant: 2, activity: 1 }, constraints: constraintsSchema.parse({ modes: ['walk', 'bus'] }) });
-  const estimate = estimatedLeg(far[0], far[1], startAt, input.constraints);
-  assert.equal(estimate.status, 'ok'); assert.equal(estimate.mode, 'bus'); assert.equal(estimate.accuracy, 'estimated');
-  assert.equal(estimatedLeg(far[0], far[1], startAt, constraintsSchema.parse({ modes: ['walk'] })).status, 'no_route');
   const seen = new Map<string, number>();
-  let inFlight = 0, maxInFlight = 0;
   const provider: RouteResolver = async (a, b, at) => {
     seen.set(`${a.id}>${b.id}`, (seen.get(`${a.id}>${b.id}`) ?? 0) + 1);
-    maxInFlight = Math.max(maxInFlight, ++inFlight);
-    await new Promise(r => setTimeout(r, 1));
-    inFlight--;
     return { ...emptyLeg(a, b, at), status: 'ok', mode: 'bus', minutes: 5, accuracy: 'provider' };
   };
   const result = await recommend(input, far, weather, provider, {}, [], now);
   assert.equal(result.status, 'ok');
   if (result.status !== 'ok') return;
   assert.equal(seen.size, 4);
+  assert([...seen.values()].every(n => n === 1));
   assert(result.course.legs.every(l => l.accuracy === 'provider' && l.minutes === 5));
   assert.equal(result.course.totalTravelMinutes, 20);
-  assert.equal(maxInFlight, 4);
-  assert([...seen.values()].every(n => n === 1));
-  // A verified leg that breaks the budget sends the search elsewhere instead of shipping the estimate.
+  // Each stop after the first is the nearest remaining candidate of an allowed category.
+  const stops = result.course.visits.map(v => v.place);
+  stops.slice(1).forEach((stop, i) => {
+    const prev = stops[i], rest = far.filter(p => !stops.slice(0, i + 1).includes(p) && p.category !== prev.category);
+    assert.equal(stop.id, rest.sort((a, b) => distanceMeters(prev, a) - distanceMeters(prev, b))[0].id);
+  });
+  // A leg that breaks the budget sends the search elsewhere, and the same pair is never fetched twice.
   const slowFirst: RouteResolver = async (a, b, at) => ({ ...emptyLeg(a, b, at), status: 'ok', mode: 'bus', minutes: a.id === 'p0' ? 100 : 5, accuracy: 'provider' });
   const rerouted = await recommend(input, far, weather, slowFirst, {}, [], now);
   assert.equal(rerouted.status, 'ok');
   if (rerouted.status === 'ok') assert(rerouted.course.legs.every(l => l.fromId !== 'p0' && l.minutes === 5));
-  // The estimate is an optimistic lower bound: a budget that exactly fits the provider's times must still yield a course.
-  const tight = request({ counts: input.counts, constraints: constraintsSchema.parse({ modes: ['walk', 'bus'], maxTravelMinutes: 48 }) });
-  const twelve: RouteResolver = async (a, b, at) => ({ ...emptyLeg(a, b, at), status: 'ok', mode: 'bus', minutes: 12, accuracy: 'provider' });
-  for (const [a, b] of [[far[0], far[1]], [far[0], far[5]], [far[2], far[3]]]) assert(estimatedLeg(a, b, startAt, tight.constraints).minutes! < 12);
-  const fitted = await recommend(tight, far, weather, twelve, {}, [], now);
-  assert.equal(fitted.status, 'ok');
-  if (fitted.status === 'ok') { assert.equal(fitted.course.totalTravelMinutes, 48); assert.equal(fitted.course.travelLimit, 'met'); }
-  assert.equal((await recommend({ ...tight, constraints: { ...tight.constraints, maxTravelMinutes: 47 } }, far, weather, twelve, {}, [], now)).status, 'no_course');
   let calls = 0;
   const memoized = memoizeRoutes(async (...args) => { calls++; return walk(...args); });
   await memoized(far[0], far[1], startAt, input.constraints);

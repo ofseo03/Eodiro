@@ -15,28 +15,6 @@ export function walkingLeg(from: Place, to: Place, at: string, maxMeters: number
     accessWalkMeters: 0, accessWalkMinutes: 0, reason: distance <= maxMeters ? null : '추정 보행거리 초과' };
 }
 
-// 탐색 전용 대중교통 추정: 직선거리 × 1.3 을 20km/h 로 나누고 대기 5분을 더한다.
-// 일부러 낙관적인 하한값이다. 추정이 실제보다 길면 가능한 쌍을 탐색에서 미리 걸러 코스를 놓칠 수 있지만,
-// 짧으면 확정 코스를 실제 조회한 뒤 한 라운드 더 도는 비용만 든다. 실제 경로 API는 확정된 코스의 구간에만 호출한다(lib/course.ts recommend).
-const TRANSIT_METERS_PER_MINUTE = 20000 / 60;
-const TRANSIT_OVERHEAD_MINUTES = 5;
-
-/** 경로 API 없이 계산하는 추정 구간. 도보 판정은 walkingLeg 와 같고, 대중교통은 거리 기반 어림값이다. */
-export function estimatedLeg(from: Place, to: Place, at: string, constraints: Constraints): Leg {
-  let exceeded: Leg | null = null;
-  if (constraints.modes.includes('walk')) {
-    const leg = walkingLeg(from, to, at, constraints.maxWalkMeters);
-    if (leg.status === 'ok') return leg;
-    exceeded = { ...leg, minutes: null };
-  }
-  const bus = constraints.modes.includes('bus'), subway = constraints.modes.includes('subway');
-  if (!bus && !subway) return exceeded ?? emptyLeg(from, to, at);
-  const distance = distanceMeters(from, to) * 1.3;
-  return { ...emptyLeg(from, to, at), status: 'ok', mode: bus && subway ? 'transit' : bus ? 'bus' : 'subway',
-    distanceMeters: distance, minutes: TRANSIT_OVERHEAD_MINUTES + Math.ceil(distance / TRANSIT_METERS_PER_MINUTE),
-    accuracy: 'estimated', reason: null };
-}
-
 /** 같은 장소 쌍·조건의 경로 조회를 한 번만 하도록 감싼다. 출발 시각은 키에 넣지 않는다(분 단위 차이로 재조회하지 않기 위해). */
 export function memoizeRoutes(resolve: RouteResolver): RouteResolver {
   const memo = new Map<string, Promise<Leg>>();
