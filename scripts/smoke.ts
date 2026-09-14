@@ -6,6 +6,8 @@ import { createServer } from 'node:net';
 import { resolve } from 'node:path';
 import { replaceCatalog } from '../lib/server/db';
 import { regions } from '../lib/contracts';
+import { districts } from '../lib/districts';
+import { locateRegion } from '../lib/regions';
 
 const directory = mkdtempSync(resolve('.smoke-'));
 const oldDb = process.env.PLACE_DB_PATH;
@@ -37,7 +39,7 @@ try {
   }
   assert(ready, `서버 시작 실패: ${logs}`);
   const listed = (await call('regions')).data.regions;
-  assert.equal(listed.length, regions.length);
+  assert.equal(listed.length, regions.length + districts.length);
   assert.deepEqual(listed.find((r: {id: string}) => r.id === 'seongsu').availability, { cafe: 0, restaurant: 0, activity: 0 });
   const empty = await call('places?regionId=seongsu');
   assert.equal(empty.status, 503); assert.equal(empty.data.error.code, 'PLACE_LOOKUP_FAILED');
@@ -46,20 +48,43 @@ try {
     lat: 37.544, lng: 127.054 + index * 0.0001, address: '테스트 주소', source: 'synthetic test only',
     sourceUrl: 'https://example.com/test', collectedAt: at,
   }));
-  replaceCatalog(places);
+  const districtId = places[0].district;
+  const manual = (id: string, townId: string) => {
+    const town = regions.find(r => r.id === townId)!;
+    return { ...places[0], ...locateRegion(town), id, lat: town.lat, lng: town.lng };
+  };
+  const otherTown = manual('manual:other-town', 'eungbong');
+  const outside = manual('manual:outside', 'ikseon');
+  replaceCatalog([...places, otherTown, outside]);
+  const districtPlaces = await call('places?' + new URLSearchParams({ regionId: districtId }));
+  assert.equal(districtPlaces.status, 200);
+  assert.deepEqual(districtPlaces.data.places.map((p: {id: string}) => p.id).sort(), [...places, otherTown].map(p => p.id).sort());
+  const counts = (await call('regions')).data.regions.find((r: {id: string}) => r.id === districtId).availability;
+  assert.deepEqual(counts, { cafe: 2, restaurant: 1, activity: 1 });
+  assert.equal((await call('weather?' + new URLSearchParams({ regionId: districtId, startAt: at }))).status, 200);
   assert.equal((await call('places?regionId=seongsu')).data.places.length, 3);
   assert.equal((await call('places?regionId=unknown')).status, 400);
   assert.equal((await call('places?regionId=seongsu&preferences=secret')).status, 400);
   const body = { regionId: 'seongsu', fromId: 'VisitSeoul:TEST0', toId: 'VisitSeoul:TEST1', referenceAt: at, constraints: { modes: ['walk'] } };
   const walk = await call('routes', body);
   assert.equal(walk.status, 200); assert.equal(walk.data.status, 'ok'); assert.equal(walk.data.accuracy, 'estimated');
+  const districtBody = { ...body, regionId: districtId, toId: otherTown.id };
+  assert.equal((await call('routes', districtBody)).status, 200);
+  assert.equal((await call('routes', { ...districtBody, toId: outside.id })).status, 400);
+  const districtDetails = await call('places/details', { regionId: districtId, placeIds: [places[0].id, otherTown.id] });
+  assert.equal(districtDetails.status, 200);
+  assert.equal(districtDetails.data.places.length, 2);
+  assert.equal((await call('places/details', { regionId: districtId, placeIds: [outside.id] })).status, 400);
+  const districtEvaluation = { request: { regionId: districtId, startAt: at }, placeIds: [otherTown.id, places[1].id, places[2].id] };
+  assert.equal((await call('courses/evaluate', districtEvaluation)).status, 200);
+  assert.equal((await call('courses/evaluate', { ...districtEvaluation, placeIds: [outside.id, places[1].id, places[2].id] })).status, 400);
   const failed = await call('routes', { ...body, constraints: { modes: ['bus', 'taxi'] } });
   assert.equal(failed.data.status, 'route_failed'); assert.equal(failed.data.minutes, null);
   assert.equal((await call('routes', { ...body, preferences: { foods: ['한식'] } })).status, 400);
   assert.equal((await call('routes', { ...body, constraints: { modes: ['taxi'] } })).status, 400);
   assert.equal((await call('routes', { ...body, toId: 'nonexistent' })).status, 400);
   const evaluated = await call('courses/evaluate', { request: { regionId: 'seongsu', startAt: at }, placeIds: places.map(p => p.id) });
-  assert.equal(evaluated.status, 503); assert.equal(evaluated.data.error.code, 'VISITSEOUL_NOT_CONFIGURED');
+  assert.equal(evaluated.status, 200); assert(evaluated.data.visits.every((v: {place: {detailFailed?: boolean}}) => v.place.detailFailed));
   assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['nonexistent'] })).status, 400);
   assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0', 'VisitSeoul:TEST0'] })).status, 400);
   const detail = await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0'] });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import regionData from '../config/regions.json';
 import { locateRegion } from './regions';
 import { MAX_PER_CATEGORY, compositionProblem } from './composition';
+import { findDistrict } from './districts';
 
 export const regions = regionData;
 export const categorySchema = z.enum(['cafe', 'restaurant', 'activity']);
@@ -17,6 +18,7 @@ export const preferencesSchema = z.strictObject({
   environment: z.enum(['indoor', 'outdoor', 'any']).default('any'),
 });
 export const regionIdSchema = z.string().refine(id => regions.some(r => r.id === id), '지원하지 않는 지역입니다');
+export const requestRegionIdSchema = z.string().refine(id => !!findDistrict(id), '지원하지 않는 지역입니다');
 export const dateTimeSchema = z.iso.datetime({ offset: true });
 export const constraintsSchema = z.strictObject({
   modes: z.array(modeSchema).min(1).max(4).default(['walk', 'bus', 'subway'])
@@ -25,7 +27,7 @@ export const constraintsSchema = z.strictObject({
   maxTravelMinutes: z.number().positive().default(60),
 });
 export const requestSchema = z.strictObject({
-  regionId: regionIdSchema,
+  regionId: requestRegionIdSchema,
   startAt: dateTimeSchema.default(() => new Date().toISOString()),
   counts: z.strictObject({
     cafe: z.number().int().min(0).max(MAX_PER_CATEGORY.cafe).default(1),

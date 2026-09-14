@@ -1,6 +1,6 @@
 # 어디로 (Eodiro)
 
-서울 전역의 동네(25개 자치구, 147개 동네)에서 날씨와 이동시간에 맞춘 카페·식당·놀거리 코스를 추천하는 웹 서비스.
+서울 25개 자치구에서 구 전체를 대상으로 날씨와 이동시간에 맞춘 카페·식당·놀거리 코스를 추천하는 웹 서비스. 장소 데이터의 기존 147개 세부 권역은 유지하며, 같은 구의 권역을 합쳐 추천한다.
 
 - 서비스 스펙: [`spec.md`](spec.md)
 - 디자인 시스템: [`DESIGN.md`](DESIGN.md) · CSS 토큰 [`design/tokens.css`](design/tokens.css) · 미리보기 [`design/preview.html`](design/preview.html)
@@ -46,13 +46,13 @@ npm run collect:regions    # 공식 행정동 경계를 받아 지역 중심 좌
 | `config/region-boundaries.json` | 공식 행정동 경계. 장소의 동네 판정에 쓴다. 지금은 우선 검수 지역 5곳(성수·서촌·익선·홍대·연남)만 있고 `npm run collect:regions`로 전체를 받는다 |
 | `lib/api.ts` | 프론트 화면 ↔ 백엔드 계약(`lib/client.ts`) 어댑터. 요청·응답 형태만 바꾸고 계산은 하지 않는다 |
 | `lib/client.ts` · `lib/course.ts` | 브라우저에서 돌아가는 코스 계산. 장소·날씨·경로는 `app/api/*`를 호출한다 |
-| `app/api/[...path]/route.ts` | 공공 API 호출과 장소 캐시 조회를 맡는 Route Handler. `regions`는 동네별 카테고리 후보 수를 함께 준다 |
+| `app/api/[...path]/route.ts` | 공공 API 호출과 장소 캐시 조회를 맡는 Route Handler. `regions`는 구별 합산 후보 수와 호환용 세부 권역별 후보 수를 함께 준다 |
 | `lib/storage.ts` | 취향·마지막 입력값·제외 목록의 기기 저장(localStorage) |
 | `components/Photo.tsx` · `public/images/` | 랜딩 사진 슬롯. 파일이 없으면 플레이스홀더로 폴백. 출처 규칙은 `public/images/README.md` |
 
 동네 대표 좌표는 공식 경계로 계산한 5곳만 `centerSource: "official"` 이고, 나머지 142곳은 기상청 예보 격자를 고르기 위한 근사값(`approximate`)이다. `npm run collect:regions` 를 한 번 돌리면 전부 공식 값으로 바뀐다. 근사 좌표는 장소의 동네 판정에는 쓰지 않는다.
 
-취향과 입력값은 브라우저에만 저장하며 서버로 보내지 않는다. 공공 API 호출은 `app/api/*` Route Handler에서만 수행한다(spec 6장). 장소 데이터가 없는 동네는 홈에서 회색으로 표시되고 선택할 수 없다.
+취향과 입력값은 브라우저에만 저장하며 서버로 보내지 않는다. 공공 API 호출은 `app/api/*` Route Handler에서만 수행한다(spec 6장). 홈에서는 구 단위로 선택하고 부족한 카테고리를 안내한다. 저장된 세부 권역 선택은 해당 구로 복원한다.
 
 ## 사용 공공 API
 

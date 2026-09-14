@@ -1,37 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { DISTRICTS, TOWNS, findTown, type Town } from "@/data/regions";
+import { useEffect, useState } from "react";
+import { districts, findDistrict } from "@/lib/districts";
 import { PinIcon } from "@/components/Icons";
 import { fetchAvailability, type Availability } from "@/lib/api";
-
-/**
- * region-picker = text-input 검색 + 자치구 pill-tab 행 + 동네 region-picker-row (spec 5.8).
- * 자치구를 고르면 그 구의 동네 타일만 보이고, 검색은 동네명·행정동명 부분 일치로 동작한다(spec 2.3).
- * 카테고리별 데이터 현황만 안내한다. 선택한 개수·날짜 조건은 추천할 때 판단한다.
- */
 
 const TINTS = ["#ffe6f0", "#e3f0ff", "#dff5ea", "#fff3d6", "#ece6ff", "#ffe9d6"];
 const CATEGORY_LABEL = { cafe: "카페", restaurant: "식당", activity: "놀거리" } as const;
 
-/** 후보 수를 아직 모르면(null) 안내 없이 모두 선택 가능으로 둔다. */
-function shortageOf(availability: Availability | null, townId: string): string[] | null {
+function shortageOf(availability: Availability | null, districtId: string): string[] | null {
   if (!availability) return null;
-  const counts = availability[townId] ?? { cafe: 0, restaurant: 0, activity: 0 };
+  const counts = availability[districtId] ?? { cafe: 0, restaurant: 0, activity: 0 };
   const missing = (Object.keys(CATEGORY_LABEL) as (keyof typeof CATEGORY_LABEL)[]).filter((c) => counts[c] === 0).map((c) => CATEGORY_LABEL[c]);
   return missing.length ? missing : null;
 }
 
 type Props = {
   value: string | null;
-  onChange: (townId: string) => void;
+  onChange: (districtId: string) => void;
   error?: string;
 };
 
 export function RegionPicker({ value, onChange, error }: Props) {
-  const selected = useMemo(() => findTown(value), [value]);
+  const selected = findDistrict(value);
   const [query, setQuery] = useState("");
-  const [district, setDistrict] = useState<string>(() => selected?.district ?? DISTRICTS[0].name);
   const [availability, setAvailability] = useState<Availability | null>(null);
 
   useEffect(() => {
@@ -41,74 +33,46 @@ export function RegionPicker({ value, onChange, error }: Props) {
   }, []);
 
   const q = query.trim();
-  const towns: Town[] = useMemo(() => {
-    if (q) return TOWNS.filter((t) => t.name.includes(q) || t.dongs.some((d) => d.includes(q)));
-    return DISTRICTS.find((d) => d.name === district)?.towns ?? [];
-  }, [q, district]);
-
-  function select(t: Town) {
-    onChange(t.id);
-    setDistrict(t.district);
-    setQuery("");
-  }
-
+  const matching = districts.filter((d) => d.name.includes(q));
   const selectedShortage = selected ? shortageOf(availability, selected.id) : null;
 
   return (
     <div className="field">
-      <label htmlFor="region-search">지역 <span className="label-note">· 자치구를 고르거나 동네·행정동 이름으로 검색</span></label>
+      <label htmlFor="region-search">지역 <span className="label-note">· 구를 고르면 구 전체에서 코스를 추천해요</span></label>
       <input
         id="region-search"
         className="text-input"
         type="search"
-        placeholder="예: 성수, 서교동, 샤로수길"
+        placeholder="예: 관악구, 성동구, 종로구"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         autoComplete="off"
       />
 
-      {!q && (
-        <div className="district-tabs" role="tablist" aria-label="자치구">
-          {DISTRICTS.map((d) => (
-            <button
-              key={d.name}
-              type="button"
-              role="tab"
-              className={`pill-tab${d.name === district ? " is-active" : ""}`}
-              aria-selected={d.name === district}
-              onClick={() => setDistrict(d.name)}
-            >
-              {d.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {towns.length === 0 ? (
-        <div className="region-empty">&lsquo;{q}&rsquo;에 맞는 동네가 없어요. 행정동 이름으로도 찾을 수 있어요.</div>
+      {matching.length === 0 ? (
+        <div className="region-empty">&lsquo;{q}&rsquo;에 맞는 구가 없어요. 자치구 이름으로 검색해 주세요.</div>
       ) : (
-        <div className="grid-regions" role="listbox" aria-label={q ? "검색 결과" : `${district} 동네`}>
-          {towns.map((t, i) => {
-            const shortage = shortageOf(availability, t.id);
-            const isSelected = t.id === value;
+        <div className="grid-regions" role="group" aria-label="자치구 선택">
+          {matching.map((d, i) => {
+            const shortage = shortageOf(availability, d.id);
+            const isSelected = d.id === selected?.id;
             return (
               <button
-                key={t.id}
+                key={d.id}
                 type="button"
-                role="option"
-                aria-selected={isSelected}
-                className={`region-tile${isSelected ? " is-selected" : ""}`}
-                onClick={() => select(t)}
-                title={shortage ? `이 동네는 장소 데이터가 부족합니다 (${shortage.join("·")})` : t.dongs.join(" · ")}
+                aria-pressed={isSelected}
+                className={"region-tile" + (isSelected ? " is-selected" : "")}
+                onClick={() => onChange(d.id)}
+                title={shortage ? d.name + "는 장소 데이터가 부족합니다 (" + shortage.join("·") + ")" : d.name + " 전체에서 추천"}
               >
                 <div className="product-thumbnail" style={{ background: shortage ? "var(--color-surface-soft)" : TINTS[i % TINTS.length] }}>
                   <PinIcon />
                 </div>
-                <span className="name">{t.name}</span>
+                <span className="name">{d.name}</span>
                 {shortage ? (
                   <span className="badge badge-attention" style={{ justifySelf: "center" }}>{shortage.join("·")} 부족</span>
                 ) : (
-                  <span className="sub">{q ? t.district : `${t.dongs.length}개 동`}</span>
+                  <span className="sub">구 전체</span>
                 )}
               </button>
             );
@@ -118,16 +82,15 @@ export function RegionPicker({ value, onChange, error }: Props) {
 
       {selected ? (
         <p className="region-selected">
-          <span className="badge badge-neutral">{selected.district}</span>
           <b className="t-body-sm-bold" style={{ color: "var(--color-ink)" }}>{selected.name}</b>
-          <span className="muted">{selected.dongs.join(" · ")}</span>
+          <span className="muted">구 전체에서 코스를 추천해요.</span>
         </p>
       ) : (
-        <p className="help">아직 동네를 고르지 않았어요.</p>
+        <p className="help">아직 구를 고르지 않았어요.</p>
       )}
       {selectedShortage && <p className="help">{selectedShortage.length === 3
-        ? "현재 이 동네의 후보 정보가 없어요."
-        : `현재 ${selectedShortage.join("·")} 후보가 없어요. 해당 종류를 0개로 설정하면 다른 종류로 추천받을 수 있어요.`}</p>}
+        ? "현재 이 구의 후보 정보가 없어요."
+        : "현재 " + selectedShortage.join("·") + " 후보가 없어요. 해당 구성을 0개로 설정하면 다른 구성으로 추천받을 수 있어요."}</p>}
       {error && <span className="input-error" role="alert">{error}</span>}
     </div>
   );

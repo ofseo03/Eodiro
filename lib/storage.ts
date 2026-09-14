@@ -1,6 +1,7 @@
 // 기기 저장(localStorage) 헬퍼. 서버로는 아무것도 보내지 않는다 (spec 2.2, 5.2).
 // 읽기 결과는 원본 문자열 기준으로 캐시해 같은 값이면 같은 객체를 돌려준다(useSyncExternalStore 스냅숏 안정성).
 import { DEFAULT_PREFERENCES, type CourseRequest, type Preferences } from "./types";
+import { findDistrict } from "./districts";
 
 const KEY_PREFS = "eodiro:preferences";
 const KEY_ONBOARDED = "eodiro:onboarded";
@@ -85,7 +86,10 @@ export function resetPreferences() {
 }
 
 export function loadLastRequest(): CourseRequest | null {
-  return read<CourseRequest | null>(KEY_LAST_REQUEST, (v) => v as CourseRequest, null);
+  return read<CourseRequest | null>(KEY_LAST_REQUEST, (v) => {
+    const request = v as CourseRequest;
+    return { ...request, townId: findDistrict(request.townId)?.id ?? null };
+  }, null);
 }
 export function saveLastRequest(r: CourseRequest) {
   write(KEY_LAST_REQUEST, r);
