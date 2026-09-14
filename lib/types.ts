@@ -2,7 +2,7 @@
 import type { Course as BackendCourse } from "./contracts";
 import { MAX_PER_CATEGORY } from "./composition";
 
-export const FOOD_TYPES = ["한식", "양식", "일식", "중식", "아시안", "카페 디저트", "기타"] as const;
+export const FOOD_TYPES = ["한식", "양식", "일식", "중식", "아시안", "기타"] as const;
 export const PLAY_TYPES = ["전시", "체험", "쇼핑", "공원", "공연", "기타"] as const;
 export const MOODS = ["조용함", "활기참", "감성", "힙플"] as const;
 

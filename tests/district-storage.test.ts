@@ -25,6 +25,20 @@ test('saved town selections restore as districts without changing other preferen
   }
 });
 
+test('food types removed from the option list are dropped from saved preferences', () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const saved = { foods: ['한식', '카페 디저트'], plays: ['전시'], moods: ['조용함'] };
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+    localStorage: { getItem: () => JSON.stringify(saved) },
+  } });
+  try {
+    assert.deepEqual(loadPreferences(), { foods: ['한식'], plays: ['전시'], moods: ['조용함'] });
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'window', previous);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
+});
+
 test('legacy indoor preference is ignored while other preferences are preserved', () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
   const saved = { foods: ['한식'], plays: ['전시'], moods: ['조용함'], indoor: '실외' };

@@ -1,6 +1,6 @@
 // 기기 저장(localStorage) 헬퍼. 서버로는 아무것도 보내지 않는다 (spec 2.2, 5.2).
 // 읽기 결과는 원본 문자열 기준으로 캐시해 같은 값이면 같은 객체를 돌려준다(useSyncExternalStore 스냅숏 안정성).
-import { DEFAULT_PREFERENCES, type CourseRequest, type Preferences } from "./types";
+import { DEFAULT_PREFERENCES, FOOD_TYPES, MOODS, PLAY_TYPES, type CourseRequest, type Preferences } from "./types";
 import { findDistrict } from "./districts";
 
 const KEY_PREFS = "eodiro:preferences";
@@ -67,10 +67,16 @@ function remove(key: string) {
   notify();
 }
 
+function keepKnown<T extends string>(values: unknown, known: readonly T[]): T[] {
+  if (!Array.isArray(values)) return [];
+  return values.filter((v): v is T => (known as readonly string[]).includes(v));
+}
+
 export function loadPreferences(): Preferences {
+  // 선택지에서 빠진 값(예: 예전 '카페 디저트')이 기기에 남아 있어도 버린다.
   return read(KEY_PREFS, (v) => {
     const prefs = v as Partial<Preferences>;
-    return { foods: prefs.foods ?? [], plays: prefs.plays ?? [], moods: prefs.moods ?? [] };
+    return { foods: keepKnown(prefs.foods, FOOD_TYPES), plays: keepKnown(prefs.plays, PLAY_TYPES), moods: keepKnown(prefs.moods, MOODS) };
   }, DEFAULT_PREFERENCES);
 }
 export function savePreferences(p: Preferences) {
