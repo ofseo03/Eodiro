@@ -1,14 +1,14 @@
 import { z } from 'zod';
-import { atmosphereSchema, categorySchema, environmentSchema, foodSchema, activitySchema, hoursSchema, placeSchema, type Place } from '../contracts';
+import { atmosphereSchema, hoursSchema, placeIndexSchema, type Place, type PlaceIndex } from '../contracts';
 import rules from '../../config/classification.json';
 import { fetchJson, fetchText } from './http';
 import { locateRegion } from '../regions';
-import { getVisitSeoulDetail } from './visit-seoul';
+import { getVisitSeoulDetail, textContent } from './visit-seoul';
 
 export const sources = ['TbVwRestaurants', 'TbVwEntertainment'] as const;
 const rowSchema = z.object({
   POST_SN: z.string(), LANG_CODE_ID: z.string(), POST_SJ: z.string(), POST_URL: z.url(),
-  ADDRESS: z.string(), NEW_ADDRESS: z.string(), CMMN_USE_TIME: z.string().optional(),
+  ADDRESS: z.string(), NEW_ADDRESS: z.string(), CATEGORY_PATH: z.string().optional(), CMMN_USE_TIME: z.string().optional(),
   CMMN_BSNDE: z.string().optional(), CMMN_RSTDE: z.string().optional(),
 });
 export type SourceRow = z.infer<typeof rowSchema> & { service: typeof sources[number] | 'VisitSeoul' };
@@ -52,11 +52,6 @@ export function parseDownload(raw: unknown, service: typeof sources[number]): So
     .filter(row => row.LANG_CODE_ID === 'ko').map(row => ({...row, service}));
 }
 
-function textContent(value: string) {
-  return value.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 export function parsePlacePage(html: string) {
   const lat = /data-map-y="([\d.]+)"/.exec(html)?.[1], lng = /data-map-x="([\d.]+)"/.exec(html)?.[1];
   const description = /<meta\s+name="description"\s+content="([^"]*)"/.exec(html)?.[1] ?? '';
@@ -71,13 +66,6 @@ export async function getPlacePage(sourceUrl: string) {
   return parsePlacePage(await fetchText(url));
 }
 
-const reviewSchema = z.strictObject({
-  category: categorySchema, food: foodSchema.nullable().default(null), activity: activitySchema.nullable().default(null),
-  environment: environmentSchema.optional(), description: z.string().default(''),
-  hours: hoursSchema.nullable().default(null),
-});
-export const reviewsSchema = z.record(z.string(), reviewSchema);
-
 export function inferEnvironment(category: Place['category'], activity: Place['activity']): Place['environment'] {
   return category !== 'activity' || activity === '전시' || activity === '공연' ? 'indoor' : activity === '공원' ? 'outdoor' : 'unknown';
 }
@@ -87,26 +75,89 @@ export function atmosphereTags(description: string) {
     .map(([tag]) => atmosphereSchema.parse(tag));
 }
 
-export async function normalizeRows(rows: SourceRow[], input: unknown) {
-  const reviews = reviewsSchema.parse(input), places: Place[] = [], rejected: { id: string; reason: string }[] = [];
-  for (const row of rows) {
-    const id = `${row.service}:${row.POST_SN}`, review = reviews[id];
-    if (!review) { rejected.push({ id, reason: '분류 미검수' }); continue; }
-    const detail = row.service === 'VisitSeoul' ? await getVisitSeoulDetail(row.POST_SN) : {
-      ...await getPlacePage(row.POST_URL), address: row.NEW_ADDRESS || row.ADDRESS,
-      hoursText: [row.CMMN_USE_TIME, row.CMMN_BSNDE, row.CMMN_RSTDE].filter(Boolean).join(' / '),
-    };
-    const address = detail.address;
-    const membership = detail.location ? locateRegion(detail.location) : null;
-    const location = detail.location && membership ? {...detail.location, ...membership} : null;
-    if (!location) { rejected.push({ id, reason: '좌표·행정동 미확인 또는 서비스 지역 밖' }); continue; }
-    places.push(placeSchema.parse({ id, name: row.POST_SJ, address, ...location, ...review,
-      environment: review.environment ?? inferEnvironment(review.category, review.activity),
-      description: review.description || textContent(detail.description),
-      environmentSource: review.environment ? 'reviewed' : 'inferred', atmospheres: atmosphereTags(review.description || textContent(detail.description)),
-      hoursText: detail.hoursText,
-      source: row.service === 'VisitSeoul' ? '서울관광재단 · 비짓서울 API' : '서울 열린데이터광장 · 서울관광재단 (공공누리 제1유형)',
-      sourceUrl: row.POST_URL, collectedAt: new Date().toISOString() }));
+export function classifyCategory(path: string): Pick<PlaceIndex, 'category' | 'food' | 'activity'> {
+  const parts = path.split('>').map(p => p.trim()), root = parts[0];
+  if (root === '음식' || ['한식', '양식', '중식', '일식', '카페&디저트', '카페/찻집'].includes(root)) {
+    if (parts.includes('카페/찻집') || parts.includes('카페&디저트')) return { category: 'cafe', food: '카페 디저트', activity: null };
+    const food = parts.includes('한식') ? '한식' : (parts.includes('서양식') || parts.includes('양식')) ? '양식'
+      : parts.includes('중식') ? '중식' : parts.includes('일식') ? '일식' : null;
+    return { category: 'restaurant', food, activity: null };
   }
-  return { places, rejected };
+  if (['문화관광', '자연관광', '역사관광', '쇼핑', '체험관광', '축제/공연/행사'].includes(root)) {
+    const activity = root === '쇼핑' ? '쇼핑' : root === '체험관광' ? '체험'
+      : /공원/.test(path) ? '공원' : /전시|박물관|미술관/.test(path) ? '전시' : ['공연', '공연시설'].includes(parts.at(-1) || '') ? '공연' : null;
+    return { category: 'activity', food: null, activity };
+  }
+  return { category: null, food: null, activity: null };
+}
+
+// Only unambiguous schedules are parsed; conditional/holiday prose remains in the index as unknown.
+export function parseHours(time: string, business: string, closed: string): PlaceIndex['hours'] {
+  const weekly: NonNullable<PlaceIndex['hours']>['weekly'] = {};
+  let uncertain = false;
+  const days = (text: string): number[] => {
+    if (/^(매일|연중무휴)$/.test(text)) return [0, 1, 2, 3, 4, 5, 6];
+    if (/^(평일|월~금|월요일~금요일)$/.test(text)) return [1, 2, 3, 4, 5];
+    if (/^(주말|토~일|토요일~일요일)$/.test(text)) return [0, 6];
+    if (/^(?:[일월화수목금토](?:요일)?)(?:[,·/ ]+[일월화수목금토](?:요일)?)*$/.test(text))
+      return [...text.matchAll(/([일월화수목금토])(?:요일)?/g)].map(m => '일월화수목금토'.indexOf(m[1]));
+    return [];
+  };
+  for (const line of time.split(/\r?\n/)) {
+    const match = /^(.*?)\s*(\d{1,2}):(\d{2})\s*[~–-]\s*(\d{1,2}):(\d{2})$/.exec(line.trim());
+    if (!match) { if (line.trim()) uncertain = true; continue; }
+    const [, label, h1, m1, h2, m2] = match;
+    if (+h1 > 23 || +h2 > 24 || +m1 > 59 || +m2 > 59 || (+h2 === 24 && +m2 !== 0)) continue;
+    const start = +h1 * 60 + +m1, end = +h2 * 60 + +m2;
+    const openDays = days(label.trim() || business.trim());
+    if (!openDays.length) uncertain = true;
+    for (const day of openDays) weekly[day] = [[start, end > start ? end : end + 1440]];
+  }
+  const closure = closed.trim().replace(/\s*(정기)?휴무$/, '');
+  const closedWeekdays = days(closure.replace(/^매주\s*/, ''));
+  for (const day of closedWeekdays) weekly[day] = [];
+  const dates = closure.split(/[,·/\s]+/).map(value => z.iso.date().safeParse(value.replaceAll('.', '-')));
+  const exceptions = dates.every(d => d.success) ? Object.fromEntries(dates.map(d => [d.data!, []])) : {};
+  if (uncertain || (!closedWeekdays.length && !Object.keys(exceptions).length && !/^(?:없음|연중\s?무휴|무휴|-)?$/.test(closure)))
+    for (const day of Object.keys(weekly)) if (weekly[day].length) delete weekly[day];
+  return Object.keys(weekly).length || Object.keys(exceptions).length ? hoursSchema.parse({ weekly, exceptions }) : null;
+}
+
+export function indexRow(row: SourceRow, detail?: {
+  location: { lat: number; lng: number } | null; category: string; description: string; hoursText: string;
+  businessDaysText?: string; closedDaysText?: string; availableFrom?: string; availableUntil?: string;
+}, status: PlaceIndex['detailStatus'] = detail ? 'ok' : 'pending'): PlaceIndex {
+  const point = detail?.location ?? null, membership = point ? locateRegion(point) : null;
+  const sourceCategory = detail?.category || row.CATEGORY_PATH || '';
+  const classification = classifyCategory(sourceCategory);
+  const business = detail?.businessDaysText || '', closed = detail?.closedDaysText || '', time = detail?.hoursText || '';
+  const date = (value = '') => { const parsed = z.iso.date().safeParse(value.trim().replaceAll('.', '-')); return parsed.success ? parsed.data : null; };
+  return placeIndexSchema.parse({
+    id: `${row.service}:${row.POST_SN}`, name: row.POST_SJ, sourceCategory, ...classification,
+    lat: point?.lat ?? null, lng: point?.lng ?? null, regionId: membership?.regionId ?? null,
+    district: membership?.district || '', dong: membership?.dong || '',
+    environment: classification.category ? inferEnvironment(classification.category, classification.activity) : 'unknown',
+    environmentSource: 'inferred', atmospheres: atmosphereTags(detail?.description || ''),
+    hours: parseHours(time, business, closed), hoursText: time, businessDaysText: business, closedDaysText: closed,
+    availableFrom: date(detail?.availableFrom), availableUntil: date(detail?.availableUntil), detailStatus: status,
+    source: row.service === 'VisitSeoul' ? '서울관광재단 · 비짓서울 API' : '서울 열린데이터광장 · 서울관광재단',
+    sourceUrl: row.POST_URL, collectedAt: new Date().toISOString(),
+  });
+}
+
+export async function normalizeRows(rows: SourceRow[]) {
+  const places: PlaceIndex[] = [], failures: { id: string; reason: string }[] = [];
+  for (const row of rows) {
+    try {
+      const detail = row.service === 'VisitSeoul' ? await getVisitSeoulDetail(row.POST_SN) : {
+        ...await getPlacePage(row.POST_URL), hoursText: row.CMMN_USE_TIME || '',
+        businessDaysText: row.CMMN_BSNDE || '', closedDaysText: row.CMMN_RSTDE || '',
+      };
+      places.push(indexRow(row, detail));
+    } catch {
+      places.push(indexRow(row, undefined, 'failed'));
+      failures.push({ id: `${row.service}:${row.POST_SN}`, reason: '상세 조회 또는 형식 확인 실패' });
+    }
+  }
+  return { places, failures };
 }

@@ -14,6 +14,7 @@ export function Footer() {
           </div>
           <div>
             <h4>데이터</h4>
+            <a href="https://api.visitseoul.net" target="_blank" rel="noreferrer">서울관광재단 · 비짓서울 API</a>
             <a href="https://data.seoul.go.kr" target="_blank" rel="noreferrer">서울 열린데이터광장</a>
             <a href="https://www.data.go.kr" target="_blank" rel="noreferrer">기상청 단기예보</a>
             <a href="https://www.seoulmetro.co.kr" target="_blank" rel="noreferrer">서울교통공사</a>
@@ -29,7 +30,7 @@ export function Footer() {
           </div>
         </div>
         <p className="t-caption footer-legal">
-          © 2026 어디로 · 장소·날씨·경로 데이터는 서울특별시, 기상청, 서울교통공사 공공 API를 사용합니다. 한국어만 제공합니다.
+          © 2026 어디로 · 비짓서울 API를 활용하여 제작되었습니다. 날씨·경로 데이터는 기상청, 서울교통공사 공공 API를 사용합니다. 한국어만 제공합니다.
         </p>
       </div>
     </footer>

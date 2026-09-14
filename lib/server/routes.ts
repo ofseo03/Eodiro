@@ -1,7 +1,7 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { z } from 'zod';
 import type { Constraints, Leg, Place } from '../contracts';
-import { fetchText } from './http';
+import { fetchText, publicDataKey } from './http';
 import { emptyLeg, walkingLeg } from '../routing';
 import { distanceMeters } from '../geo';
 
@@ -72,7 +72,7 @@ export async function getRoute(from: Place, to: Place, at: string, constraints: 
   const kind = bus && subway ? 'mixed' : bus ? 'bus' : 'subway';
   const operation = { mixed: 'getPathInfoByBusNSub', bus: 'getPathInfoByBus', subway: 'getPathInfoBySubway' }[kind];
   const url = new URL(`http://ws.bus.go.kr/api/rest/pathinfo/${operation}`);
-  url.search = new URLSearchParams({ ServiceKey: process.env.DATA_GO_KR_KEY,
+  url.search = new URLSearchParams({ ServiceKey: publicDataKey(process.env.DATA_GO_KR_KEY),
     startX: String(from.lng), startY: String(from.lat), endX: String(to.lng), endY: String(to.lat) }).toString();
   try {
     const options = parseTransitOptions(await fetchText(url), from, to, at, constraints, kind);

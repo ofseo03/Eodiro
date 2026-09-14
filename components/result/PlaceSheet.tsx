@@ -48,6 +48,7 @@ export function PlaceSheet({
 
         {mode === "detail" ? (
           <>
+            {place.flags.includes("상세 조회 실패") && <p role="status" className="t-body-md charcoal">상세정보를 불러오지 못했어요. 저장된 정보로 표시하며, 최신 행사 일정은 확인하지 못했어요.</p>}
             <p className="t-body-md charcoal desc">{place.description || "설명이 없어요."}</p>
             <div className="specs">
               <div><b>주소</b><span>{place.address}</span></div>

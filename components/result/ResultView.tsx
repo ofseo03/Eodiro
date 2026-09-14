@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CourseMap, LoadingState, Timeline } from "./parts";
+import { LoadingState, Timeline } from "./parts";
+import { CourseMap } from "./CourseMap";
 import { PlaceSheet } from "./PlaceSheet";
 import { CourseError, STAGES, recommendCourse, replacePlace, retryLeg, type Stage } from "@/lib/api";
 import { formatVisitAt } from "@/lib/format";
@@ -135,7 +136,7 @@ export function ResultView() {
             </>
           ) : state.reason === "catalog" ? (
             <>
-              <p className="t-body-md charcoal">지금은 우선 검수 지역(성수·서촌·익선·홍대·연남)부터 장소를 채우고 있어요. 다른 동네를 골라 보세요.</p>
+              <p className="t-body-md charcoal">이 동네에는 추천에 필요한 장소 데이터가 아직 충분하지 않아요. 다른 동네를 골라 보세요.</p>
               <div className="row" style={{ justifyContent: "center" }}>
                 <Link className="btn btn-buy-cta" href="/#request">다른 동네 고르기</Link>
                 <button type="button" className="btn btn-ghost" onClick={() => rerun(loadSeenPlaces())}>다시 시도</button>
