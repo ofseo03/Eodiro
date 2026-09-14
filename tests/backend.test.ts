@@ -10,7 +10,7 @@ import { emptyLeg, walkingLeg } from '../lib/routing';
 import { forecastIssue, getWeather, parseWeather } from '../lib/server/weather';
 import { atmosphereTags, collectSource, inferEnvironment, parseSource } from '../lib/server/collect';
 import { countPlacesByRegion, deletePlaces, readAllPlaces, readPlaces, replaceCatalog, upsertPlaces } from '../lib/server/db';
-import { getPlaceDetails } from '../lib/server/visit-seoul';
+import { getPlaceDetails, shortDescription, textContent } from '../lib/server/visit-seoul';
 import { applyReplacement, createCourse } from '../lib/client';
 import { toCourse } from '../lib/api';
 import { locateRegion } from '../lib/regions';
@@ -581,4 +581,20 @@ test('all IDs survive indexing; search applies category, environment, closures a
     if (old === undefined) delete process.env.PLACE_DB_PATH; else process.env.PLACE_DB_PATH = old;
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('place descriptions drop editor CSS and fit within five Korean lines', () => {
+  const html = '<style>.se-contents .se-scrollbox{overflow-x: auto; -ms-overflow-style: none;}.se-contents .se-scrollbox::-webkit-scrollbar{display: none;}</style>'
+    + '<p>롯데아울렛 서울역점은 패션 트렌드의 중심지이자 서울역과 연결되어 있어 접근이 편리한 도심형 아울렛입니다.</p>';
+  assert.equal(textContent(html), '롯데아울렛 서울역점은 패션 트렌드의 중심지이자 서울역과 연결되어 있어 접근이 편리한 도심형 아울렛입니다.');
+  // 태그 없이 남은 CSS 규칙(중첩 @media 포함)도 지우고, 한글 본문의 영문 브랜드명은 남긴다.
+  const bare = '.se-image > *{max-width: 100%; min-width: 10px;} @media (max-width: 600px){.se-video{height: auto !important;}} The North Face, Zara 등 브랜드가 있습니다.';
+  assert.equal(textContent(bare), 'The North Face, Zara 등 브랜드가 있습니다.');
+  const long = '첫 문장은 짧습니다. 두 번째 문장은 조금 더 길어서 여기까지 이어집니다. '.repeat(4);
+  const short = shortDescription(long);
+  assert(short.length <= 110 && short.endsWith('.'), short);
+  assert.equal(shortDescription('짧은 설명'), '짧은 설명');
+  const oneSentence = '문장 부호 없이 아주 길게 이어지는 설명 '.repeat(10).trim();
+  const cut = shortDescription(oneSentence);
+  assert(cut.length <= 110 && cut.endsWith('…') && !cut.includes(' …'), cut);
 });

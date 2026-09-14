@@ -132,9 +132,33 @@ export function visitSeoulDetail(data: ReturnType<typeof parseVisitSeoulDetail>)
     hoursText: data.extra?.cmmn_use_time || '' };
 }
 
+/** HTML 본문만 남긴다. 비짓서울 설명(post_desc)에는 네이버 에디터가 붙인 `<style>.se-contents{…}</style>` 블록이 함께 오므로
+ * 태그뿐 아니라 스타일·스크립트 블록과, 태그 없이 남은 CSS 규칙(`.se-image{max-width:100%}` 등)도 걷어낸다. */
 export function textContent(value: string) {
-  return value.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+  let text = value.replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ');
+  // 선택자는 ASCII 문자로만 이루어지므로 한글 본문은 건드리지 않는다. 중첩 규칙(@media{…{…}})은 안쪽부터 반복해서 지운다.
+  for (let previous = ''; previous !== text;) { previous = text; text = text.replace(/[A-Za-z0-9\s.#>*:,\-\[\]="'()~+^$|!%@/]*\{[^{}]*\}/g, ' '); }
+  return text.replace(/&amp;/g, '&').replace(/&quot;/g, '"')
     .replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** 결과 화면 바텀시트에서 한글 5줄 안에 들어가는 길이(모바일 기준 한 줄 약 22자). */
+export const DESCRIPTION_MAX_CHARS = 110;
+
+/** 긴 설명을 앞에서부터 문장 단위로 끊어 `max`자 이내로 줄인다. 첫 문장부터 넘치면 어절 경계에서 자르고 말줄임표를 붙인다. */
+export function shortDescription(value: string, max = DESCRIPTION_MAX_CHARS) {
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  const sentences = text.match(/[^.!?。]+[.!?。]*\s*/g) ?? [text];
+  let kept = '';
+  for (const sentence of sentences) {
+    if ((kept + sentence).trim().length > max) break;
+    kept += sentence;
+  }
+  if (kept.trim()) return kept.trim();
+  const cut = text.slice(0, max - 1);
+  const boundary = cut.lastIndexOf(' ');
+  return `${(boundary > max / 2 ? cut.slice(0, boundary) : cut).trim()}…`;
 }
 
 /** Only enrich the places already chosen from the SQLite recommendation index.
@@ -156,7 +180,7 @@ export async function getPlaceDetails(places: Place[]): Promise<Place[]> {
       const availableUntil = date(info.availableUntil, place.availableUntil);
       if (availableFrom && availableUntil && availableFrom > availableUntil) throw new VisitSeoulError(502, 'VISITSEOUL_INVALID_RESPONSE');
       return placeSchema.parse({ ...place, name: textContent(info.name), address: textContent(info.address),
-        description: textContent(info.description), hoursText: textContent(info.hoursText), availableFrom, availableUntil, detailFailed: false });
+        description: shortDescription(textContent(info.description)), hoursText: textContent(info.hoursText), availableFrom, availableUntil, detailFailed: false });
     } catch (error) {
       if (!(error instanceof VisitSeoulError) && !(error instanceof z.ZodError)) throw error;
       return { ...place, detailFailed: true };
