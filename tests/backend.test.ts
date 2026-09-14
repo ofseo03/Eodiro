@@ -204,14 +204,16 @@ test('percent-encoded data.go.kr keys are decoded and weather failures log their
     const url = new URL(String(input));
     keys.push(url.searchParams.get('serviceKey') ?? url.searchParams.get('ServiceKey') ?? '');
     if (url.hostname === 'ws.bus.go.kr') return new Response('<ServiceResult><msgHeader><headerCd>0</headerCd></msgHeader><msgBody></msgBody></ServiceResult>');
-    return new Response('<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>');
+    const xml = '<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>';
+    return new Response(xml, { status: keys.length === 1 ? 200 : 500 });
   };
   try {
-    const result = await getWeather({ lat: 37.54, lng: 127.05 }, startAt, now);
-    assert.equal(result.status, 'unavailable');
-    assert.match(logged[0], /SERVICE_KEY_IS_NOT_REGISTERED_ERROR/);
+    assert.equal((await getWeather({ lat: 37.54, lng: 127.05 }, startAt, now)).status, 'unavailable');
+    assert.match(logged[0], /JSON 아님: .*SERVICE_KEY_IS_NOT_REGISTERED_ERROR/);
+    assert.equal((await getWeather({ lat: 37.54, lng: 127.05 }, startAt, now)).status, 'unavailable');
+    assert.match(logged[1], /HTTP 500.*SERVICE_KEY_IS_NOT_REGISTERED_ERROR/);
     await getRoute(places[0], places[1], startAt, constraintsSchema.parse({ modes: ['bus'] }));
-    assert.deepEqual(keys, ['abc+def==', 'abc+def==']);
+    assert.deepEqual(keys, ['abc+def==', 'abc+def==', 'abc+def==']);
   } finally {
     globalThis.fetch = originalFetch; console.error = originalError;
     if (oldKey === undefined) delete process.env.DATA_GO_KR_KEY; else process.env.DATA_GO_KR_KEY = oldKey;
