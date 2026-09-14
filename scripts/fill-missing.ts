@@ -6,7 +6,7 @@
 import { writeFile } from 'node:fs/promises';
 import { regions, type Category } from '../lib/contracts';
 import { countPlacesByRegion, upsertPlaces, readPlaceIds } from '../lib/server/db';
-import { collectKakaoPlaces } from '../lib/server/kakao-places';
+import { collectKakaoPlaces, KakaoPlacesError } from '../lib/server/kakao-places';
 
 const args = process.argv.slice(2);
 const option = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
@@ -40,6 +40,7 @@ for (const { region, missing } of targets) {
   } catch (error) {
     failed.push(region.id);
     console.error(`  ${region.name}(${region.id}): 실패 — ${error instanceof Error ? error.message : String(error)}`);
+    if (error instanceof KakaoPlacesError && error.fatal) { console.error('\n키·설정 문제라 나머지 동네도 같은 결과입니다. 위 안내를 확인한 뒤 다시 실행하세요.'); process.exit(1); }
   }
 }
 
