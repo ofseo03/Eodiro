@@ -15,10 +15,11 @@ export function walkingLeg(from: Place, to: Place, at: string, maxMeters: number
     accessWalkMeters: 0, accessWalkMinutes: 0, reason: distance <= maxMeters ? null : '추정 보행거리 초과' };
 }
 
-// 탐색 전용 대중교통 추정: 직선거리 × 1.3 을 평균 15km/h 로 나누고 대기·환승 10분을 더한다.
-// 실제 경로 API는 확정된 코스의 구간에만 호출한다(lib/course.ts recommend).
-const TRANSIT_METERS_PER_MINUTE = 15000 / 60;
-const TRANSIT_OVERHEAD_MINUTES = 10;
+// 탐색 전용 대중교통 추정: 직선거리 × 1.3 을 20km/h 로 나누고 대기 5분을 더한다.
+// 일부러 낙관적인 하한값이다. 추정이 실제보다 길면 가능한 쌍을 탐색에서 미리 걸러 코스를 놓칠 수 있지만,
+// 짧으면 확정 코스를 실제 조회한 뒤 한 라운드 더 도는 비용만 든다. 실제 경로 API는 확정된 코스의 구간에만 호출한다(lib/course.ts recommend).
+const TRANSIT_METERS_PER_MINUTE = 20000 / 60;
+const TRANSIT_OVERHEAD_MINUTES = 5;
 
 /** 경로 API 없이 계산하는 추정 구간. 도보 판정은 walkingLeg 와 같고, 대중교통은 거리 기반 어림값이다. */
 export function estimatedLeg(from: Place, to: Place, at: string, constraints: Constraints): Leg {

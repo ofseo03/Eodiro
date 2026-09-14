@@ -183,6 +183,14 @@ test('transit search estimates during DFS and fetches only the chosen legs, in p
   const rerouted = await recommend(input, far, weather, slowFirst, {}, [], now);
   assert.equal(rerouted.status, 'ok');
   if (rerouted.status === 'ok') assert(rerouted.course.legs.every(l => l.fromId !== 'p0' && l.minutes === 5));
+  // The estimate is an optimistic lower bound: a budget that exactly fits the provider's times must still yield a course.
+  const tight = request({ counts: input.counts, constraints: constraintsSchema.parse({ modes: ['walk', 'bus'], maxTravelMinutes: 48 }) });
+  const twelve: RouteResolver = async (a, b, at) => ({ ...emptyLeg(a, b, at), status: 'ok', mode: 'bus', minutes: 12, accuracy: 'provider' });
+  for (const [a, b] of [[far[0], far[1]], [far[0], far[5]], [far[2], far[3]]]) assert(estimatedLeg(a, b, startAt, tight.constraints).minutes! < 12);
+  const fitted = await recommend(tight, far, weather, twelve, {}, [], now);
+  assert.equal(fitted.status, 'ok');
+  if (fitted.status === 'ok') { assert.equal(fitted.course.totalTravelMinutes, 48); assert.equal(fitted.course.travelLimit, 'met'); }
+  assert.equal((await recommend({ ...tight, constraints: { ...tight.constraints, maxTravelMinutes: 47 } }, far, weather, twelve, {}, [], now)).status, 'no_course');
   let calls = 0;
   const memoized = memoizeRoutes(async (...args) => { calls++; return walk(...args); });
   await memoized(far[0], far[1], startAt, input.constraints);
