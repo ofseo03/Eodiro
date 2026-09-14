@@ -21,6 +21,14 @@ npm run collect:regions    # 공식 행정동 경계를 받아 지역 중심 좌
 
 공공 API 키는 `.env.example` 을 `.env.local` 로 복사해 채운다. 키가 없으면 날씨는 '미반영', 대중교통은 '경로 조회 실패'로 표시되고 도보 코스만 계산된다.
 
+## Vercel 배포
+
+- 프레임워크 프리셋은 **Next.js** 여야 한다. `vercel.json`의 `"framework": "nextjs"` 가 이를 고정하므로 프로젝트 설정에서 Node.js/Other 로 잡혀 있어도 Next.js 빌더가 쓰인다.
+- Node 버전은 `package.json`의 `engines.node = "24.x"` 로 고정한다(`node:sqlite` 사용).
+- Vercel은 `vercel-build` 스크립트를 실행한다. 이 스크립트는 `data/places.sqlite` 가 없으면 샘플 장소(성수·홍대)로 만든 뒤 `next build` 를 돌리고, `next.config.ts` 의 `outputFileTracingIncludes` 가 그 파일을 `/api/*` 함수 번들에 넣는다. 서버리스 파일시스템은 읽기 전용이라 런타임에서는 DB를 읽기 전용으로만 연다.
+- 실제 검수 장소를 배포하려면 빌드 전에 DB를 채우면 된다. 예: `vercel-build` 를 `npm run import:places -- data/places.json && npm run build` 처럼 바꾸고 검수 JSON 을 커밋한다.
+- 환경변수: `KAKAO_JAVASCRIPT_KEY`(지도), `KAKAO_REST_API_KEY`(주소 검색), `DATA_GO_KR_KEY`(날씨·대중교통). Kakao 개발자 콘솔의 플랫폼 도메인에 Vercel 도메인을 등록해야 지도가 뜬다.
+
 ## 구조
 
 | 경로 | 역할 |
