@@ -1,4 +1,4 @@
-import type { Constraints, Leg, Place } from './contracts';
+import type { Constraints, Leg, Place, RouteResolver } from './contracts';
 import { distanceMeters } from './geo';
 
 export function emptyLeg(from: Place, to: Place, at: string): Leg {
@@ -13,6 +13,21 @@ export function walkingLeg(from: Place, to: Place, at: string, maxMeters: number
     distanceMeters: distance, minutes: Math.ceil(distance / (4000 / 60)), accuracy: 'estimated',
     walkLimit: distance <= maxMeters ? 'estimated_met' : 'estimated_exceeded',
     accessWalkMeters: 0, accessWalkMinutes: 0, reason: distance <= maxMeters ? null : '추정 보행거리 초과' };
+}
+
+/** 같은 장소 쌍·조건의 경로 조회를 한 번만 하도록 감싼다. 출발 시각은 키에 넣지 않는다(분 단위 차이로 재조회하지 않기 위해). */
+export function memoizeRoutes(resolve: RouteResolver): RouteResolver {
+  const memo = new Map<string, Promise<Leg>>();
+  return (from, to, at, constraints) => {
+    const key = JSON.stringify([from.id, to.id, constraints]);
+    let pending = memo.get(key);
+    if (!pending) {
+      pending = resolve(from, to, at, constraints);
+      memo.set(key, pending);
+      pending.catch(() => memo.delete(key));
+    }
+    return pending;
+  };
 }
 
 export function taxiAlternative(leg: Leg, constraints: Constraints): Leg {

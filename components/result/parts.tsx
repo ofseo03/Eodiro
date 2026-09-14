@@ -1,10 +1,9 @@
 "use client";
 
-import { BusIcon, CafeIcon, FoodIcon, LocateIcon, PlayIcon, SubwayIcon, TaxiIcon, WalkIcon } from "@/components/Icons";
-import type { Category, Leg, LegStatus, Place } from "@/lib/types";
-
-export const CategoryIcon = ({ category }: { category: Category }) =>
-  category === "카페" ? <CafeIcon /> : category === "식당" ? <FoodIcon /> : <PlayIcon />;
+import Image from "next/image";
+import { BusIcon, SubwayIcon, TaxiIcon, WalkIcon } from "@/components/Icons";
+import { CATEGORY_IMAGES } from "@/lib/images";
+import type { Leg, LegStatus, Place } from "@/lib/types";
 
 const ModeIcon = ({ mode }: { mode: Leg["mode"] }) =>
   mode === "도보" ? <WalkIcon /> : mode === "버스" ? <BusIcon /> : mode === "지하철" ? <SubwayIcon /> : <TaxiIcon />;
@@ -18,29 +17,6 @@ const LEG_BADGE: Record<LegStatus, string> = {
   "경로 조회 실패": "badge-critical",
 };
 
-/** 지도 — 마커와 순서 번호만 둔다. 경로선은 그리지 않는다(spec 4장). 지도 제공자 연결 전 임시 격자. */
-export function CourseMap({ places, activeIndex, onSelect }: { places: Place[]; activeIndex: number | null; onSelect: (i: number) => void }) {
-  return (
-    <div className="map" role="group" aria-label="코스 지도">
-      {places.map((p, i) => (
-        <button
-          type="button"
-          key={p.id}
-          className={`marker${activeIndex === i ? " is-active" : ""}`}
-          style={{ left: `${p.pin.x}%`, top: `${p.pin.y}%` }}
-          aria-label={`${i + 1}. ${p.name}`}
-          aria-pressed={activeIndex === i}
-          onClick={() => onSelect(i)}
-        >
-          {i + 1}
-        </button>
-      ))}
-      <span className="map-note">지도 제공자(스마트서울맵/카카오맵) 연결 전 임시 표시</span>
-      <button type="button" className="btn-icon" aria-label="현재 위치"><LocateIcon /></button>
-    </div>
-  );
-}
-
 /** course-timeline — 장소 카드 → 이동 구간 행 → 장소 카드 (DESIGN.md · Signature Components). */
 export function Timeline({
   places, legs, activeIndex, retrying, onSelect, onRetry,
@@ -53,20 +29,17 @@ export function Timeline({
       {places.map((p, i) => (
         <li key={p.id} style={{ display: "contents" }}>
           <button type="button" className={`place-card${activeIndex === i ? " is-active" : ""}`} onClick={() => onSelect(i)} aria-expanded={activeIndex === i}>
-            <div className="product-thumbnail"><CategoryIcon category={p.category} /></div>
+            <div className="product-thumbnail"><Image src={CATEGORY_IMAGES[p.category]} alt="" width={72} height={72} className="category-character" /></div>
             <div>
               <div className="title">
                 <span className="order">{i + 1}</span>
                 <b className="t-subtitle-lg">{p.name}</b>
-                <span className="t-caption-bold muted">{p.arriveAt} 도착</span>
               </div>
               <div className="badges">
                 <span className={`badge badge-neutral${p.category === "놀거리" ? " badge-purple" : ""}`}>{p.subcategory ? `${p.category} · ${p.subcategory}` : p.category}</span>
-                <span className="badge badge-neutral">{p.indoor}</span>
+                {p.indoor !== "미확인" && <span className="badge badge-neutral">{p.indoor}</span>}
                 {p.open === true && <span className="badge badge-success">영업 중</span>}
                 {p.open === false && <span className="badge badge-critical">영업 종료</span>}
-                {p.open === null && p.arriveAt === "미정" && <span className="badge badge-attention">도착 미정</span>}
-                {p.flags.map((f) => <span className="badge badge-attention" key={f}>{f}</span>)}
                 {p.moods.slice(0, 1).map((m) => <span className="badge badge-neutral" key={m}>{m}</span>)}
               </div>
             </div>
@@ -80,7 +53,7 @@ export function Timeline({
               </span>
               {retrying !== i && (
                 <div className="leg-actions" style={{ marginLeft: "auto" }}>
-                  <span className={`badge ${LEG_BADGE[legs[i].status]}`}>{legs[i].status}</span>
+                  {legs[i].status !== "추정" && legs[i].status !== "실측" && <span className={`badge ${LEG_BADGE[legs[i].status]}`}>{legs[i].status}</span>}
                   {legs[i].status === "경로 조회 실패" && (
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRetry(i)}>재시도</button>
                   )}

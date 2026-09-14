@@ -6,7 +6,7 @@ import { PHOTO_SLOTS, type PhotoSlot } from "@/lib/images";
 
 /**
  * 사진 슬롯 (DESIGN.md · Image Behavior). 서버 컴포넌트.
- * public/images/<slot>.jpg 가 있으면 next/image 로 풀블리드 사진을 깔고, 없으면 그라디언트 플레이스홀더를 유지한다.
+ * lib/images.ts 에 지정된 파일이 있으면 next/image 로 이미지를 깔고, 없으면 그라디언트 플레이스홀더를 유지한다.
  * 사진 위 흰 글자 가독성을 위한 rgba(10,19,23,0.12) 오버레이는 .photo::after 가 담당한다.
  */
 export function Photo({

@@ -1,6 +1,8 @@
 import { preferencesSchema, requestSchema, type Course, type CourseRequest, type Place, type Preferences, type RouteResolver, type Visit, type Weather } from './contracts';
 import { distanceMeters } from './geo';
+import { matchesRegion } from './districts';
 import { taxiAlternative } from './routing';
+import { canFollow } from './composition';
 
 const dwell = { cafe: 60, restaurant: 60, activity: 90 };
 const categories = ['cafe', 'restaurant', 'activity'] as const;
@@ -13,9 +15,10 @@ export function matchesPreference(p: Place, prefs: Preferences) {
 
 export function openingStatus(p: Place, at: string | null): Visit['openingStatus'] {
   if (at === null) return 'arrival_unknown';
-  if (!p.hours) return 'hours_unknown';
   const local = new Date(Date.parse(at) + 9 * 3600000);
   const day = local.toISOString().slice(0, 10), weekday = local.getUTCDay();
+  if ((p.availableFrom && day < p.availableFrom) || (p.availableUntil && day > p.availableUntil)) return 'closed';
+  if (!p.hours) return 'hours_unknown';
   const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
   const previous = new Date(local.getTime() - 86400000).toISOString().slice(0, 10);
   const today = p.hours.exceptions[day] ?? p.hours.weekly[String(weekday)];
@@ -23,6 +26,7 @@ export function openingStatus(p: Place, at: string | null): Visit['openingStatus
   if (today?.some(([a, b]) => minutes >= a && minutes < b)) return 'open';
   // Explicit date exceptions replace the entire date, including an overnight opening.
   if (!(day in p.hours.exceptions) && yesterday?.some(([a, b]) => minutes + 1440 >= a && minutes + 1440 < b)) return 'open';
+  if (today?.length === 0) return 'closed';
   return today === undefined || (!(day in p.hours.exceptions) && yesterday === undefined) ? 'hours_unknown' : 'closed';
 }
 
@@ -54,7 +58,8 @@ function candidatePool(places: Place[], request: CourseRequest, prefs: Preferenc
   const tier = (p: Place) => `${p.category}:${matchesPreference(p, prefs) ? 0 : 1}:${weather.indoorPriority && p.environment !== 'indoor' ? 1 : 0}`;
   for (const category of categories) {
     let remaining = request.counts[category];
-    const group = places.filter(p => p.category === category);
+    const group = places.filter(p => p.category === category
+      && (prefs.environment === 'any' || p.environment === prefs.environment || p.environment === 'mixed'));
     for (const key of [...new Set(group.map(tier))].sort()) {
       const candidates = group.filter(p => tier(p) === key);
       const count = Math.min(remaining, candidates.length);
@@ -65,7 +70,7 @@ function candidatePool(places: Place[], request: CourseRequest, prefs: Preferenc
   const score = (p: Place) => prefs.atmospheres.filter(a => p.atmospheres.includes(a)).length
     + (!weather.indoorPriority && prefs.environment !== 'any' && p.environment === prefs.environment ? 1 : 0);
   pool.sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
-  return { pool, quotas, tier };
+  return { pool, quotas, tier, score };
 }
 
 export type Recommendation = { status: 'ok'; course: Course } | { status: 'no_course' | 'exhausted' | 'search_limit'; message: string };
@@ -76,37 +81,53 @@ export async function recommend(
 ): Promise<Recommendation> {
   const request = requestSchema.parse(input), prefs = preferencesSchema.parse(preferences);
   if (Date.parse(request.startAt) < now.getTime()) throw new Error('방문 시각은 현재 이후여야 합니다');
-  const regional = places.filter(p => p.regionId === request.regionId);
+  const regional = places.filter(p => matchesRegion(p, request.regionId));
   const excluded = new Set(excludedIds);
   const candidates = candidatePool(regional.filter(p => !excluded.has(p.id)), request, prefs, weather);
   if (!candidates) {
     const exhausted = excluded.size > 0 && candidatePool(regional, request, prefs, weather) !== null;
     return { status: exhausted ? 'exhausted' : 'no_course', message: exhausted ? '더 이상 새로운 장소가 없습니다' : '조건에 맞는 코스가 없습니다' };
   }
+  // 같은 장소 쌍은 한 번만 조회한다. 출발 시각은 키에 넣지 않는다(분 단위 차이로 재조회하지 않기 위해).
   const memo = new Map<string, ReturnType<RouteResolver>>();
-  const route: RouteResolver = (a, b, at, constraints) => {
-    const key = JSON.stringify([a.id, b.id, at]);
-    if (!memo.has(key)) memo.set(key, resolve(a, b, at, constraints));
-    return memo.get(key)!;
+  const route = (a: Place, b: Place, at: string) => {
+    const key = `${a.id}\n${b.id}`;
+    if (!memo.has(key)) memo.set(key, resolve(a, b, at, request.constraints));
+    return memo.get(key)!.then(leg => ({ ...leg, referenceAt: at }));
   };
   let steps = 0, hitLimit = false;
   const target = Object.values(request.counts).reduce((a, b) => a + b, 0);
+  // 첫 장소는 선호 점수순, 그다음부터는 같은 점수 안에서 직전 장소와 가까운 순으로 시도한다.
+  // 가까운 쌍이 먼저 조회되므로 대부분 첫 후보에서 성립해 경로 조회 수가 구간 수에 가깝다.
+  const ordered = new Map<string, Place[]>();
+  const candidatesAfter = (prev: Place | undefined) => {
+    if (!prev) return candidates.pool;
+    let list = ordered.get(prev.id);
+    if (!list) {
+      const score = new Map(candidates.pool.map(p => [p.id, candidates.score(p)] as const));
+      const distance = new Map(candidates.pool.map(p => [p.id, distanceMeters(prev, p)] as const));
+      list = [...candidates.pool].sort((a, b) => score.get(b.id)! - score.get(a.id)! || distance.get(a.id)! - distance.get(b.id)! || a.id.localeCompare(b.id));
+      ordered.set(prev.id, list);
+    }
+    return list;
+  };
   async function search(allowFailed: boolean, allowTaxi: boolean): Promise<Course | null> {
     const used = new Set<string>(), taken = new Map<string, number>();
     async function visit(selected: Place[], legs: Course['legs'], arrival: string | null, known: number): Promise<Course | null> {
       // ponytail: bounded DFS; return search_limit, never a false no_course. Add a spatial solver if catalogs outgrow this budget.
       if (hitLimit) return null;
       if (selected.length === target) return summarizeCourse(selected, legs, request, weather, prefs);
-      for (const p of candidates!.pool) {
+      for (const p of candidatesAfter(selected[selected.length - 1])) {
         const tier = candidates!.tier(p);
         if (used.has(p.id) || (taken.get(tier) ?? 0) >= candidates!.quotas.get(tier)!) continue;
+        if (!canFollow(selected.length ? selected[selected.length - 1].category : null, p.category)) continue;
         if (++steps > 30000) { hitLimit = true; return null; }
         let nextArrival = arrival, nextKnown = known;
         const nextLegs = [...legs];
         if (selected.length) {
           const prev = selected[selected.length - 1];
           const departure = arrival === null ? request.startAt : addMinutes(arrival, dwell[prev.category]);
-          let leg = await route(prev, p, departure, request.constraints);
+          let leg = await route(prev, p, departure);
           if (allowTaxi) leg = taxiAlternative(leg, request.constraints);
           if (leg.status === 'no_route' || (leg.status === 'route_failed' && !allowFailed) || (leg.status === 'taxi_review' && !allowTaxi)) continue;
           if (leg.walkLimit === 'estimated_exceeded') continue;
@@ -139,7 +160,7 @@ export function replacementCandidates(course: Course, index: number, places: Pla
   if (![100, 300, 500].includes(radius) || !Number.isInteger(index) || !course.visits[index]) throw new Error('잘못된 교체 요청입니다');
   const prefs = preferencesSchema.parse(preferences), original = course.visits[index].place;
   const current = new Set(course.visits.map(v => v.place.id));
-  const nearby = places.filter(p => p.regionId === course.request.regionId && p.category === original.category && !current.has(p.id)
+  const nearby = places.filter(p => matchesRegion(p, course.request.regionId) && p.category === original.category && !current.has(p.id)
     && distanceMeters(original, p) <= radius && openingStatus(p, course.visits[index].arrivalAt) !== 'closed');
   const request = { ...course.request, counts: { cafe: 0, restaurant: 0, activity: 0, [original.category]: 1 } };
   const pool = candidatePool(nearby, request, prefs, course.weather)?.pool ?? [];

@@ -5,6 +5,7 @@ out/
 .env*
 !.env.example
 data/*.sqlite*
+!data/places.sqlite
 data/raw/
 *.tsbuildinfo
 .*.tmp

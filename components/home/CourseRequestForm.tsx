@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
+import { CATEGORY_IMAGES } from "@/lib/images";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { RegionPicker } from "./RegionPicker";
-import { CheckIcon } from "@/components/Icons";
 import { nowLocalInput } from "@/lib/format";
-import { clearSeenPlaces, loadLastRequest, loadPreferences, saveLastRequest } from "@/lib/storage";
+import { clearSeenPlaces, loadLastRequest, saveLastRequest } from "@/lib/storage";
 import { useHydrated, useStored } from "@/lib/useStored";
 import {
-  CATEGORIES, INDOOR_PREFS, MAX_PLACES, MAX_WALK_METERS, MIN_PLACES,
-  DEFAULT_PREFERENCES, type Category, type CourseRequest, type IndoorPref,
+  CATEGORIES, MAX_PER_CATEGORY_LABELED, MAX_PLACES, MAX_WALK_METERS, MIN_PLACES,
+  type Category, type CourseRequest,
 } from "@/lib/types";
+import { compositionProblem } from "@/lib/composition";
 
 /**
  * course-request-panel — 홈 입력 폼 (spec 2.3 · 5.8).
@@ -27,9 +29,12 @@ function defaultRequest(): CourseRequest {
     maxTravelMinutes: 60,
     transport: { bus: true, subway: true, walk: true, taxi: false },
     maxWalkMeters: 500,
-    indoor: "상관없음",
   };
 }
+
+type RequestDraft = Omit<CourseRequest, "maxTravelMinutes" | "maxWalkMeters"> & {
+  maxTravelMinutes: number | string; maxWalkMeters: number | string;
+};
 
 type Errors = Partial<Record<"townId" | "visitAt" | "composition" | "maxTravelMinutes" | "maxWalkMeters" | "transport", string>>;
 
@@ -38,8 +43,8 @@ function validate(r: CourseRequest): Errors {
   if (!r.townId) e.townId = "지역을 골라 주세요.";
   if (!r.visitAt) e.visitAt = "방문 날짜와 시간을 입력해 주세요.";
   else if (new Date(r.visitAt).getTime() < Date.now() - 60_000) e.visitAt = "현재 시각 이후로 설정해 주세요.";
-  const total = Object.values(r.composition).reduce((a, b) => a + b, 0);
-  if (total < MIN_PLACES || total > MAX_PLACES) e.composition = `총 장소 수는 ${MIN_PLACES}곳 이상 ${MAX_PLACES}곳 이하여야 해요.`;
+  const composition = compositionProblem({ cafe: r.composition.카페, restaurant: r.composition.식당, activity: r.composition.놀거리 });
+  if (composition) e.composition = composition;
   if (!(r.maxTravelMinutes > 0)) e.maxTravelMinutes = "1분 이상으로 입력해 주세요.";
   if (r.transport.walk) {
     if (!(r.maxWalkMeters > 0)) e.maxWalkMeters = "1m 이상으로 입력해 주세요.";
@@ -51,26 +56,25 @@ function validate(r: CourseRequest): Errors {
 
 export function CourseRequestForm() {
   const router = useRouter();
-  // 마지막 입력값과 취향(실내·실외 선호)은 저장소에서 읽고, 이번 세션의 수정분만 state로 둔다.
+  // 마지막 입력값은 저장소에서 읽고, 이번 세션의 수정분만 state로 둔다.
   const hydrated = useHydrated();
   // 현재 시각(분 단위)도 스냅숏으로 읽어 서버 렌더에서는 비워 둔다.
   const nowInput = useStored(() => nowLocalInput(), "");
   const defaultVisitAt = useStored(() => nowLocalInput(30), "");
   const last = useStored(loadLastRequest, null);
-  const prefs = useStored(loadPreferences, DEFAULT_PREFERENCES);
-  const [edits, setEdits] = useState<Partial<CourseRequest>>({});
+  const [edits, setEdits] = useState<Partial<RequestDraft>>({});
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const base: CourseRequest = { ...defaultRequest(), ...(last ?? { indoor: prefs.indoor }) };
-  const req: CourseRequest = { ...base, ...edits };
+  const base: CourseRequest = { ...defaultRequest(), ...last };
+  const req: RequestDraft = { ...base, ...edits };
   // 방문 시각이 비었거나 이미 지났으면 현재 기준으로 채운다(서버 렌더에서는 비워 둔다).
   if (hydrated && (!req.visitAt || req.visitAt < nowInput)) req.visitAt = defaultVisitAt;
   const restored = Boolean(last);
 
   const total = CATEGORIES.reduce((n, c) => n + req.composition[c], 0);
 
-  function patch(p: Partial<CourseRequest>) {
+  function patch(p: Partial<RequestDraft>) {
     setEdits((cur) => ({ ...cur, ...p }));
   }
   function step(cat: Category, delta: 1 | -1) {
@@ -80,7 +84,8 @@ export function CourseRequestForm() {
 
   function submit(ev: FormEvent) {
     ev.preventDefault();
-    const e = validate(req);
+    const request: CourseRequest = { ...req, maxTravelMinutes: Number(req.maxTravelMinutes), maxWalkMeters: Number(req.maxWalkMeters) };
+    const e = validate(request);
     setErrors(e);
     if (Object.keys(e).length) {
       const first = document.querySelector<HTMLElement>("[aria-invalid='true'], .input-error");
@@ -88,7 +93,7 @@ export function CourseRequestForm() {
       return;
     }
     setSubmitting(true);
-    saveLastRequest(req);
+    saveLastRequest(request);
     clearSeenPlaces(); // 조건을 바꿔 새로 요청하면 제외 목록은 초기화 (spec 5.4-7)
     router.push("/result");
   }
@@ -99,7 +104,7 @@ export function CourseRequestForm() {
         <div>
           <h2 className="t-heading-md">코스 추천받기</h2>
           <p className="t-body-sm muted" style={{ marginTop: "var(--space-xxs)" }}>
-            {restored ? "마지막 입력값을 기본으로 채웠어요." : "출발 위치는 필요 없어요. 동네 안에서만 코스를 짜요."}
+            {restored ? "마지막 입력값을 기본으로 채웠어요." : "출발 위치는 필요 없어요. 선택한 구 안에서만 코스를 짜요."}
           </p>
         </div>
 
@@ -124,16 +129,17 @@ export function CourseRequestForm() {
           <div className="composition">
             {CATEGORIES.map((cat) => (
               <div className="composition-item" key={cat}>
+                <Image src={CATEGORY_IMAGES[cat]} alt="" width={48} height={48} className="category-character" />
                 <span className={`badge badge-neutral${cat === "놀거리" ? " badge-purple" : ""}`}>{cat}</span>
                 <div className="stepper" role="group" aria-label={`${cat} 개수`}>
                   <button type="button" className="btn-icon" aria-label={`${cat} 줄이기`} disabled={req.composition[cat] === 0} onClick={() => step(cat, -1)}>−</button>
                   <b className="t-body-md-bold" aria-live="polite">{req.composition[cat]}</b>
-                  <button type="button" className="btn-icon" aria-label={`${cat} 늘리기`} disabled={total >= MAX_PLACES} onClick={() => step(cat, 1)}>+</button>
+                  <button type="button" className="btn-icon" aria-label={`${cat} 늘리기`} disabled={total >= MAX_PLACES || req.composition[cat] >= MAX_PER_CATEGORY_LABELED[cat]} onClick={() => step(cat, 1)}>+</button>
                 </div>
               </div>
             ))}
           </div>
-          {errors.composition && <span className="input-error">{errors.composition}</span>}
+          {errors.composition ? <span className="input-error">{errors.composition}</span> : <span className="help">카페·식당은 각각 최대 {MAX_PER_CATEGORY_LABELED.카페}곳이고, 같은 종류를 연달아 방문하지 않도록 순서를 정해요.</span>}
         </div>
 
         <div className="grid-inputs">
@@ -147,7 +153,7 @@ export function CourseRequestForm() {
               min={1}
               value={req.maxTravelMinutes}
               aria-invalid={errors.maxTravelMinutes ? "true" : undefined}
-              onChange={(e) => patch({ maxTravelMinutes: Number(e.target.value) })}
+              onChange={(e) => patch({ maxTravelMinutes: e.target.value })}
             />
             {errors.maxTravelMinutes ? <span className="input-error">{errors.maxTravelMinutes}</span> : <span className="help">체류시간은 빼고 구간 이동만 더해요.</span>}
           </div>
@@ -163,7 +169,7 @@ export function CourseRequestForm() {
               value={req.maxWalkMeters}
               disabled={!req.transport.walk}
               aria-invalid={errors.maxWalkMeters ? "true" : undefined}
-              onChange={(e) => patch({ maxWalkMeters: Number(e.target.value) })}
+              onChange={(e) => patch({ maxWalkMeters: e.target.value })}
             />
             {errors.maxWalkMeters ? <span className="input-error">{errors.maxWalkMeters}</span> : <span className="help">역·정류장까지 걷는 거리는 제외예요.</span>}
           </div>
@@ -194,21 +200,6 @@ export function CourseRequestForm() {
           </div>
         </div>
 
-        <div className="field">
-          <span className="label">실내·실외 선호 <span className="label-note">· 날씨가 실내 우선이면 날씨를 따라요</span></span>
-          <div className="radio-group" role="radiogroup" aria-label="실내·실외 선호">
-            {INDOOR_PREFS.map((opt: IndoorPref) => {
-              const checked = req.indoor === opt;
-              return (
-                <button type="button" key={opt} className="radio-option" role="radio" aria-checked={checked} onClick={() => patch({ indoor: opt })}>
-                  <span>{opt}</span>
-                  {checked && <CheckIcon />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <button type="submit" className="btn btn-buy-cta btn-full" disabled={submitting}>
           {submitting ? "코스를 준비하는 중…" : "추천받기"}
         </button>
@@ -217,14 +208,14 @@ export function CourseRequestForm() {
       <aside className="stack">
         <div className="warranty-card">
           <h3 className="t-subtitle-lg">취향은 이 기기에만 저장돼요</h3>
-          <p className="t-body-sm charcoal">음식 종류·놀거리 유형·분위기·실내외 선호를 설정에서 언제든 바꿀 수 있어요. 서버로 보내지 않습니다.</p>
+          <p className="t-body-sm charcoal">음식 종류·놀거리 유형·분위기를 설정에서 언제든 바꿀 수 있어요. 서버로 보내지 않습니다.</p>
           <Link className="btn btn-ghost" href="/settings">설정에서 수정</Link>
         </div>
         <div className="card-icon-feature">
           <h3 className="t-subtitle-lg" style={{ fontFeatureSettings: "normal" }}>이렇게 골라요</h3>
           <ul className="stack" style={{ gap: "var(--space-xs)", marginTop: "var(--space-xs)" }}>
-            <li className="t-body-sm charcoal">1. 동네 안에서 취향에 맞는 카페·식당·놀거리 후보를 모아요.</li>
-            <li className="t-body-sm charcoal">2. 방문 시각 날씨가 덥거나 춥거나 비 예보면 실내 장소를 우선해요.</li>
+            <li className="t-body-sm charcoal">1. 선택한 구 안에서 취향에 맞는 카페·식당·놀거리 후보를 모아요.</li>
+            <li className="t-body-sm charcoal">2. 방문 시각의 날씨에 따라 실내 장소를 우선 추천해요.</li>
             <li className="t-body-sm charcoal">3. 허용한 교통수단으로만 구간을 잇고, 이동시간 상한 안에서 순서를 정해요.</li>
           </ul>
         </div>

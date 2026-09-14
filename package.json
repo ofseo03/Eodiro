@@ -4,19 +4,26 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "prepare:db": "node --env-file-if-exists=.env.local --import tsx scripts/prepare-db.ts",
+    "vercel-build": "npm run prepare:db && npm run build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.tsx",
     "test:http": "node --import tsx scripts/smoke.ts",
     "collect": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/collect.ts",
     "collect:regions": "node --import tsx scripts/collect-regions.ts",
+    "index:cached": "node --import tsx scripts/index-cached.ts",
     "import:places": "node --env-file-if-exists=.env.local --import tsx scripts/import-places.ts",
+    "add:places": "node --env-file-if-exists=.env.local --import tsx scripts/add-places.ts",
+    "gen:missing": "node --import tsx scripts/gen-missing-template.ts",
+    "fill:missing": "node --env-file-if-exists=.env.local --import tsx scripts/fill-missing.ts",
+    "prune:kakao": "node --import tsx scripts/prune-kakao.ts",
     "gen:regions": "node scripts/gen-regions.mjs",
     "validate:regions": "node scripts/validate-regions.mjs",
     "seed:sample": "node --import tsx scripts/import-places.ts data/sample-places.json"

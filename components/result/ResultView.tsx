@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CourseMap, LoadingState, Timeline } from "./parts";
+import { LoadingState, Timeline } from "./parts";
+import { CourseMap } from "./CourseMap";
 import { PlaceSheet } from "./PlaceSheet";
 import { CourseError, STAGES, recommendCourse, replacePlace, retryLeg, type Stage } from "@/lib/api";
 import { formatVisitAt } from "@/lib/format";
@@ -99,7 +100,7 @@ export function ResultView() {
       <div className="container section-compact">
         <div className="card-product-feature state-card">
           <h1 className="t-heading-md">아직 조건이 없어요</h1>
-          <p className="t-body-md charcoal">홈에서 동네와 방문 시각을 고르고 &lsquo;추천받기&rsquo;를 눌러 주세요.</p>
+          <p className="t-body-md charcoal">홈에서 구와 방문 시각을 고르고 &lsquo;추천받기&rsquo;를 눌러 주세요.</p>
           <Link className="btn btn-buy-cta" href="/#request">조건 입력하러 가기</Link>
         </div>
       </div>
@@ -135,9 +136,9 @@ export function ResultView() {
             </>
           ) : state.reason === "catalog" ? (
             <>
-              <p className="t-body-md charcoal">지금은 우선 검수 지역(성수·서촌·익선·홍대·연남)부터 장소를 채우고 있어요. 다른 동네를 골라 보세요.</p>
+              <p className="t-body-md charcoal">이 구에는 추천에 필요한 장소 데이터가 아직 충분하지 않아요. 다른 구를 골라 보세요.</p>
               <div className="row" style={{ justifyContent: "center" }}>
-                <Link className="btn btn-buy-cta" href="/#request">다른 동네 고르기</Link>
+                <Link className="btn btn-buy-cta" href="/#request">다른 구 고르기</Link>
                 <button type="button" className="btn btn-ghost" onClick={() => rerun(loadSeenPlaces())}>다시 시도</button>
               </div>
             </>
@@ -183,9 +184,7 @@ export function ResultView() {
           <div className="row" style={{ gap: "var(--space-xs)" }}>
             {course.allConditionsMet && !course.includesEstimates && <span className="badge badge-success">조건 충족</span>}
             {course.allConditionsMet && course.includesEstimates && <span className="badge badge-attention">추정 포함</span>}
-            {!course.allConditionsMet && <span className="badge badge-attention">일부 조건 미확인</span>}
             {w.indoorPriority && <span className="badge badge-attention">실내 우선</span>}
-            {!w.reflected && <span className="badge badge-neutral">날씨 미반영</span>}
           </div>
         </div>
         {notice && <div className="callout" role="status" style={{ marginBottom: "var(--space-xl)" }}>{notice}</div>}
@@ -203,10 +202,9 @@ export function ResultView() {
                 <dt>총 예상 이동시간</dt><dd>{course.totalMinutes}분 <span className="muted">/ 상한 {course.maxTravelMinutes}분</span></dd>
                 <dt>확인된 구간</dt><dd>{course.confirmedLegs} / {course.legs.length}</dd>
                 <dt>도보 조건</dt><dd>{course.walkCondition}</dd>
-                <dt>날씨 판단</dt>
-                <dd>{w.reflected ? `${w.baseTime} · ${w.tempC}°C · 강수 ${w.rainPct}%` : "날씨 미반영"}</dd>
+                {w.reflected && <><dt>날씨 판단</dt><dd>{w.baseTime} · {w.tempC}°C · 강수 {w.rainPct}%</dd></>}
               </dl>
-              {w.overrideReason && <div className="callout">{w.overrideReason}</div>}
+              {w.reflected && w.overrideReason && <div className="callout">{w.overrideReason}</div>}
               <button type="button" className="btn btn-buy-cta btn-full" onClick={() => rerun(loadSeenPlaces())}>다시 추천</button>
               <Link className="btn btn-ghost btn-full" href="/#request">조건 바꾸기</Link>
             </div>

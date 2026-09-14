@@ -1,25 +1,23 @@
 // 화면에서 쓰는 뷰 타입. 백엔드 계약(lib/contracts.ts)은 lib/api.ts 어댑터가 이 타입으로 바꿔 준다.
 import type { Course as BackendCourse } from "./contracts";
+import { MAX_PER_CATEGORY } from "./composition";
 
 export const FOOD_TYPES = ["한식", "양식", "일식", "중식", "아시안", "기타"] as const;
 export const PLAY_TYPES = ["전시", "체험", "쇼핑", "공원", "공연", "기타"] as const;
 export const MOODS = ["조용함", "활기참", "감성", "힙플"] as const;
-export const INDOOR_PREFS = ["실내", "실외", "상관없음"] as const;
 
 export type FoodType = (typeof FOOD_TYPES)[number];
 export type PlayType = (typeof PLAY_TYPES)[number];
 export type Mood = (typeof MOODS)[number];
-export type IndoorPref = (typeof INDOOR_PREFS)[number];
 
 /** 초기 취향(spec 2.1). 기기(localStorage)에만 저장한다. */
 export type Preferences = {
   foods: FoodType[];
   plays: PlayType[];
   moods: Mood[];
-  indoor: IndoorPref;
 };
 
-export const DEFAULT_PREFERENCES: Preferences = { foods: [], plays: [], moods: [], indoor: "상관없음" };
+export const DEFAULT_PREFERENCES: Preferences = { foods: [], plays: [], moods: [] };
 
 export type Category = "카페" | "식당" | "놀거리";
 export const CATEGORIES: Category[] = ["카페", "식당", "놀거리"];
@@ -33,15 +31,15 @@ export type CourseRequest = {
   maxTravelMinutes: number;
   transport: { bus: boolean; subway: boolean; walk: boolean; taxi: boolean };
   maxWalkMeters: number;
-  indoor: IndoorPref;
 };
 
-export const MIN_PLACES = 2;
-export const MAX_PLACES = 5;
+export { MIN_PLACES, MAX_PLACES } from "./composition";
+/** 카테고리별 최대 개수(lib/composition.ts). */
+export const MAX_PER_CATEGORY_LABELED: Record<Category, number> = { 카페: MAX_PER_CATEGORY.cafe, 식당: MAX_PER_CATEGORY.restaurant, 놀거리: MAX_PER_CATEGORY.activity };
 export const MAX_WALK_METERS = 1000;
 
 export type LegStatus = "확정 충족" | "실측" | "추정" | "택시 이용 검토" | "경로 없음" | "경로 조회 실패";
-export type PlaceFlag = "취향 외" | "운영시간 미확인" | "분위기 미확인" | "실외 포함";
+export type PlaceFlag = "취향 외" | "운영시간 미확인" | "분위기 미확인" | "실외 포함" | "상세 조회 실패";
 
 export type Place = {
   id: string;
