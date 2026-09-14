@@ -16,7 +16,7 @@ await once(probe, 'listening');
 const port = (probe.address() as { port: number }).port;
 await new Promise<void>(resolve => probe.close(() => resolve()));
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', String(port)], {
-  env: { ...process.env, DATA_GO_KR_KEY: '', SEOUL_API_KEY: '', KAKAO_REST_API_KEY: '', KAKAO_JAVASCRIPT_KEY: '', NEXT_TELEMETRY_DISABLED: '1' },
+  env: { ...process.env, DATA_GO_KR_KEY: '', SEOUL_API_KEY: '', VISITSEOUL_API_KEY: '', KAKAO_REST_API_KEY: '', KAKAO_JAVASCRIPT_KEY: '', NEXT_TELEMETRY_DISABLED: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -40,9 +40,9 @@ try {
   assert.equal(listed.length, regions.length);
   assert.deepEqual(listed.find((r: {id: string}) => r.id === 'seongsu').availability, { cafe: 0, restaurant: 0, activity: 0 });
   const empty = await call('places?regionId=seongsu');
-  assert.equal(empty.status, 503); assert.equal(empty.data.error.code, 'CATALOG_NOT_READY');
+  assert.equal(empty.status, 503); assert.equal(empty.data.error.code, 'PLACE_LOOKUP_FAILED');
   const places = ['cafe', 'restaurant', 'activity'].map((category, index) => ({
-    id: `test-${index}`, name: `테스트 전용 ${category}`, category, regionId: 'seongsu', district: '성동구', dong: '성수2가1동',
+    id: `VisitSeoul:TEST${index}`, name: `테스트 전용 ${category}`, category, regionId: 'seongsu', district: '성동구', dong: '성수2가1동',
     lat: 37.544, lng: 127.054 + index * 0.0001, address: '테스트 주소', source: 'synthetic test only',
     sourceUrl: 'https://example.com/test', collectedAt: at,
   }));
@@ -50,7 +50,7 @@ try {
   assert.equal((await call('places?regionId=seongsu')).data.places.length, 3);
   assert.equal((await call('places?regionId=unknown')).status, 400);
   assert.equal((await call('places?regionId=seongsu&preferences=secret')).status, 400);
-  const body = { regionId: 'seongsu', fromId: 'test-0', toId: 'test-1', referenceAt: at, constraints: { modes: ['walk'] } };
+  const body = { regionId: 'seongsu', fromId: 'VisitSeoul:TEST0', toId: 'VisitSeoul:TEST1', referenceAt: at, constraints: { modes: ['walk'] } };
   const walk = await call('routes', body);
   assert.equal(walk.status, 200); assert.equal(walk.data.status, 'ok'); assert.equal(walk.data.accuracy, 'estimated');
   const failed = await call('routes', { ...body, constraints: { modes: ['bus', 'taxi'] } });
@@ -59,8 +59,12 @@ try {
   assert.equal((await call('routes', { ...body, constraints: { modes: ['taxi'] } })).status, 400);
   assert.equal((await call('routes', { ...body, toId: 'nonexistent' })).status, 400);
   const evaluated = await call('courses/evaluate', { request: { regionId: 'seongsu', startAt: at }, placeIds: places.map(p => p.id) });
-  assert.equal(evaluated.status, 200); assert.equal(evaluated.data.valid, true);
-  assert.equal(evaluated.data.weather.status, 'unavailable'); assert.equal(evaluated.data.visits.length, 3);
+  assert.equal(evaluated.status, 503); assert.equal(evaluated.data.error.code, 'VISITSEOUL_NOT_CONFIGURED');
+  assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['nonexistent'] })).status, 400);
+  assert.equal((await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0', 'VisitSeoul:TEST0'] })).status, 400);
+  const detail = await call('places/details', { regionId: 'seongsu', placeIds: ['VisitSeoul:TEST0'] });
+  assert.equal(detail.status, 200);
+  assert.equal(detail.data.places[0].detailFailed, true);
   assert.equal((await call('courses/evaluate', { request: { regionId: 'seongsu', startAt: '2000-01-01T00:00:00Z' }, placeIds: places.map(p => p.id) })).status, 400);
   assert.equal((await call('missing')).status, 404);
   assert.equal((await call('capabilities')).data.transit.liveVerified, false);

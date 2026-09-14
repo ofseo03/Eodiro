@@ -195,7 +195,7 @@ export function CourseRequestForm() {
         </div>
 
         <div className="field">
-          <span className="label">실내·실외 선호 <span className="label-note">· 날씨가 실내 우선이면 날씨를 따라요</span></span>
+          <span className="label">실내·실외 선호 <span className="label-note">· 선택한 조건 안에서 추천해요</span></span>
           <div className="radio-group" role="radiogroup" aria-label="실내·실외 선호">
             {INDOOR_PREFS.map((opt: IndoorPref) => {
               const checked = req.indoor === opt;
@@ -224,7 +224,7 @@ export function CourseRequestForm() {
           <h3 className="t-subtitle-lg" style={{ fontFeatureSettings: "normal" }}>이렇게 골라요</h3>
           <ul className="stack" style={{ gap: "var(--space-xs)", marginTop: "var(--space-xs)" }}>
             <li className="t-body-sm charcoal">1. 동네 안에서 취향에 맞는 카페·식당·놀거리 후보를 모아요.</li>
-            <li className="t-body-sm charcoal">2. 방문 시각 날씨가 덥거나 춥거나 비 예보면 실내 장소를 우선해요.</li>
+            <li className="t-body-sm charcoal">2. 선택한 실내·실외 조건 안에서 방문 시각의 날씨를 반영해요.</li>
             <li className="t-body-sm charcoal">3. 허용한 교통수단으로만 구간을 잇고, 이동시간 상한 안에서 순서를 정해요.</li>
           </ul>
         </div>

@@ -42,7 +42,7 @@ export function PreferencesFields({ value, onChange }: { value: Preferences; onC
         {chipGroup("moods", MOODS, "분위기")}
       </div>
       <div className="field">
-        <span className="label">실내·실외 선호 <span className="label-note">· 날씨가 실내 우선이면 날씨를 따라요</span></span>
+        <span className="label">실내·실외 선호 <span className="label-note">· 선택한 조건 안에서 추천해요</span></span>
         <div className="radio-group" role="radiogroup" aria-label="실내·실외 선호">
           {INDOOR_PREFS.map((opt) => {
             const checked = value.indoor === opt;

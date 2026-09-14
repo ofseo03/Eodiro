@@ -1,9 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { placeSchema, type Place } from '../contracts';
+import { placeSchema, placeIndexSchema, type Place } from '../contracts';
 
-const SCHEMA = 'CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY, region_id TEXT NOT NULL, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS places_region ON places(region_id);';
+const SCHEMA = 'CREATE TABLE IF NOT EXISTS places (id TEXT PRIMARY KEY, region_id TEXT, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS places_region ON places(region_id);';
 
 function dbPath() { return resolve(process.env.PLACE_DB_PATH || 'data/places.sqlite'); }
 
@@ -30,7 +30,10 @@ export function readPlaces(regionId: string): Place[] {
   const db = openReadableDb();
   try {
     return db.prepare('SELECT payload FROM places WHERE region_id = ? ORDER BY id').all(regionId)
-      .map(row => placeSchema.parse(JSON.parse(String(row.payload))));
+      .map(row => placeIndexSchema.parse(JSON.parse(String(row.payload))))
+      .filter(p => p.category !== null && p.lat !== null && p.lng !== null)
+      .map(p => placeSchema.parse(Object.fromEntries(Object.keys(placeSchema.shape).filter(key => key in p)
+        .map(key => [key, p[key as keyof typeof p]]))));
   } finally { db.close(); }
 }
 
@@ -41,8 +44,8 @@ export function countPlacesByRegion(): Availability {
   const db = openReadableDb();
   try {
     const counts: Availability = {};
-    for (const row of db.prepare("SELECT region_id AS regionId, json_extract(payload, '$.category') AS category, COUNT(*) AS n FROM places GROUP BY region_id, category").all()) {
-      const regionId = String(row.regionId), category = String(row.category);
+    for (const row of db.prepare("SELECT region_id, json_extract(payload, '$.category') AS category, COUNT(*) AS n FROM places WHERE region_id IS NOT NULL AND json_extract(payload, '$.lat') IS NOT NULL AND json_extract(payload, '$.lng') IS NOT NULL GROUP BY region_id, category").all()) {
+      const regionId = String(row.region_id), category = String(row.category);
       counts[regionId] ??= { cafe: 0, restaurant: 0, activity: 0 };
       if (category === 'cafe' || category === 'restaurant' || category === 'activity') counts[regionId][category] = Number(row.n);
     }
@@ -51,14 +54,14 @@ export function countPlacesByRegion(): Availability {
 }
 
 export function replaceCatalog(input: unknown) {
-  const places = placeSchema.array().min(1).parse(input);
+  const places = placeIndexSchema.array().min(1).parse(input);
   if (new Set(places.map(p => p.id)).size !== places.length) throw new Error('중복 장소 ID');
   const db = openWritableDb();
   try {
     db.exec('BEGIN IMMEDIATE');
-    db.exec('DELETE FROM places');
+    db.exec(`DROP TABLE places; ${SCHEMA}`);
     const statement = db.prepare('INSERT INTO places (id, region_id, payload) VALUES (?, ?, ?)');
-    for (const place of places) statement.run(place.id, place.regionId, JSON.stringify(place));
+    for (const place of places) statement.run(place.id, place.regionId, JSON.stringify(placeIndexSchema.parse(place)));
     db.exec('COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
   finally { db.close(); }

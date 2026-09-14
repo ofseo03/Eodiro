@@ -1,6 +1,10 @@
 export async function fetchText(url: URL, headers?: HeadersInit, body?: URLSearchParams | string) {
   const response = await fetch(url, { headers, body, method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'error' });
   if (!response.ok) throw new Error('외부 API 응답 오류');
+  return readResponseText(response);
+}
+
+export async function readResponseText(response: Response) {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('외부 API 응답 없음');
   const chunks: Uint8Array[] = [];
