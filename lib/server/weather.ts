@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Weather } from '../contracts';
 import { forecastGrid } from '../geo';
-import { fetchJson } from './http';
+import { fetchText, publicDataKey } from './http';
 
 export function forecastIssue(now: Date) {
   // Use an issue only after its 10-minute publication delay; all calendar operations are KST.
@@ -16,7 +16,7 @@ export function forecastIssue(now: Date) {
 }
 
 const forecastSchema = z.object({ response: z.object({
-  header: z.object({ resultCode: z.string() }),
+  header: z.object({ resultCode: z.string(), resultMsg: z.string().optional() }),
   body: z.object({ items: z.object({ item: z.array(z.object({
     category: z.string(), fcstDate: z.string(), fcstTime: z.string(), fcstValue: z.union([z.string(), z.number()]),
   })) }) }).optional(),
@@ -24,7 +24,7 @@ const forecastSchema = z.object({ response: z.object({
 
 export function parseWeather(raw: unknown, startAt: string, issuedAt: string, now = new Date()): Weather {
   const data = forecastSchema.parse(raw).response;
-  if (data.header.resultCode !== '00' || !data.body) throw new Error('예보 조회 실패');
+  if (data.header.resultCode !== '00' || !data.body) throw new Error(`예보 조회 실패 (resultCode=${data.header.resultCode} ${data.header.resultMsg ?? ''})`);
   const local = new Date(Date.parse(startAt) + 9 * 3600000).toISOString();
   const date = local.slice(0, 10).replaceAll('-', ''), time = local.slice(11, 13) + '00';
   const rows = data.body.items.item.filter(i => i.fcstDate === date && i.fcstTime === time);
@@ -50,8 +50,18 @@ export async function getWeather(region: {lat: number; lng: number}, startAt: st
   if (!process.env.DATA_GO_KR_KEY) return fallback('기상청 API 미설정 · 날씨 미반영');
   const url = new URL('https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst');
   const { nx, ny } = forecastGrid(region.lat, region.lng);
-  url.search = new URLSearchParams({ serviceKey: process.env.DATA_GO_KR_KEY, dataType: 'JSON', numOfRows: '2000', pageNo: '1',
+  url.search = new URLSearchParams({ serviceKey: publicDataKey(process.env.DATA_GO_KR_KEY), dataType: 'JSON', numOfRows: '2000', pageNo: '1',
     base_date: issue.baseDate, base_time: issue.baseTime, nx: String(nx), ny: String(ny) }).toString();
-  try { return parseWeather(await fetchJson(url), startAt, issue.issuedAt, now); }
-  catch { return fallback('날씨 조회 실패 또는 해당 시간 예보 없음 · 날씨 미반영'); }
+  let text = '';
+  try {
+    text = await fetchText(url);
+    return parseWeather(JSON.parse(text), startAt, issue.issuedAt, now);
+  } catch (error) {
+    // 사용자에게는 같은 안내만 보이므로 실제 원인은 서버 로그에 남긴다.
+    // 인증 실패·미승인 등은 dataType=JSON이어도 XML(<OpenAPI_ServiceResponse>)로 오므로 본문 앞부분을 함께 남긴다.
+    const detail = error instanceof SyntaxError ? `JSON 아님: ${text.replace(/\s+/g, ' ').slice(0, 300)}`
+      : error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.error(`[weather] 기상청 단기예보 조회 실패 base=${issue.baseDate}${issue.baseTime} nx=${nx} ny=${ny} startAt=${startAt} · ${detail}`);
+    return fallback('날씨 조회 실패 또는 해당 시간 예보 없음 · 날씨 미반영');
+  }
 }
