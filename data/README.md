@@ -83,6 +83,21 @@ npm run add:places -- 추가-장소.json --strict   # 같은 ID가 있으면 아
 
 어느 동네가 얼마나 부족한지는 `npm run gen:missing`으로 뽑습니다. [`missing-places.md`](missing-places.md)에 구별 목록을, [`manual-places.todo.json`](manual-places.todo.json)에 부족한 칸마다 한 건씩 자리를 잡아 둔 템플릿을 씁니다. 템플릿 항목은 이름이 `(작성 필요)`로 시작하고 좌표는 행정동 중심 자리표시자이므로, 실제 장소로 바꾼 항목만 남기고 `add:places`를 실행합니다. `(작성 필요)`가 남은 항목이 하나라도 있으면 아무것도 저장하지 않습니다.
 
+### 카카오 로컬 API로 자동 채우기
+
+`.env.local`에 `KAKAO_REST_API_KEY`(REST API 키)가 있으면 부족한 동네를 자동으로 채울 수 있습니다.
+
+```bash
+npm run fill:missing                      # 검색만 하고 data/manual-places.kakao.json 에 저장(검토용)
+npm run fill:missing -- --apply           # DB에 바로 추가
+npm run fill:missing -- --per 5 --region hongje,amsa --apply   # 카테고리마다 5건, 지정한 동네만
+```
+
+- 카카오 카테고리 검색(카페 CE7, 음식점 FD6, 문화시설 CT1·관광명소 AT4)을 행정동 경계 사각형으로 호출하고, 좌표가 실제로 그 동네 경계 안에 있는 결과만 남깁니다. 술집·뷔페 등 코스에 맞지 않는 분류는 제외합니다.
+- ID는 `manual:kakao-<카카오 장소 ID>`, 출처는 `카카오 로컬 API`, `sourceUrl`은 카카오 장소 페이지입니다. 설명은 카카오 분류(예: `카페 · 커피전문점`)로 채우고, 영업시간·분위기는 미확인으로 둡니다. 실내외는 분류에서 추론(`inferred`)합니다.
+- 결과를 검토하려면 `--apply` 없이 실행해 JSON을 확인한 뒤 `npm run add:places -- data/manual-places.kakao.json` 으로 넣습니다.
+- 카카오 검색 결과 저장은 카카오 개발자 약관의 이용 범위를 따라야 합니다.
+
 ## 다른 컴퓨터에서 파일 만들기
 
 JSON 인덱스 배열을 준비했다면:

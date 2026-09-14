@@ -16,6 +16,7 @@ npm run test               # 백엔드 단위 테스트
 npm run seed:sample        # 개발용 샘플 장소(성수·홍대)를 로컬 DB(data/places.sqlite)에 넣기
 npm run add:places -- 파일.json   # 기존 DB를 유지한 채 수동 검수 장소 추가(형식: data/manual-places.example.json)
 npm run gen:missing        # 장소가 부족한 동네 목록(data/missing-places.md)과 채워 넣기 템플릿(data/manual-places.todo.json) 생성
+npm run fill:missing -- --apply   # 카카오 로컬 API(KAKAO_REST_API_KEY)로 부족한 동네를 자동으로 채워 DB에 추가. --apply 없이면 JSON만 생성
 npm run gen:regions        # spec.md 부록 A → config/regions.json (147개 동네)
 npm run validate:regions   # 동네·행정동 배정과 좌표 검증
 npm run collect:regions    # 공식 행정동 경계를 받아 지역 중심 좌표·경계(config/region-boundaries.json) 갱신

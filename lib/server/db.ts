@@ -37,6 +37,14 @@ export function readPlaces(regionId: string): Place[] {
   } finally { db.close(); }
 }
 
+/** 저장된 모든 장소 ID. 파일이 없으면 빈 집합. */
+export function readPlaceIds() {
+  if (!existsSync(dbPath())) return new Set<string>();
+  const db = openReadableDb();
+  try { return new Set(db.prepare('SELECT id FROM places').all().map(row => String(row.id))); }
+  finally { db.close(); }
+}
+
 export type Availability = Record<string, { cafe: number; restaurant: number; activity: number }>;
 
 /** 동네별 카테고리 후보 수 (spec 2.3: 하나라도 0인 동네는 선택 불가). */
