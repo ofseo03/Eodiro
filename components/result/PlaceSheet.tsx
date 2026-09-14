@@ -48,13 +48,12 @@ export function PlaceSheet({
 
         {mode === "detail" ? (
           <>
-            {place.flags.includes("상세 조회 실패") && <p role="status" className="t-body-md charcoal">상세정보를 불러오지 못했어요. 저장된 정보로 표시하며, 최신 행사 일정은 확인하지 못했어요.</p>}
-            <p className="t-body-md charcoal desc">{place.description || "설명이 없어요."}</p>
+            {place.description.trim() && <p className="t-body-md charcoal desc">{place.description}</p>}
             <div className="specs">
-              <div><b>주소</b><span>{place.address}</span></div>
-              <div><b>운영시간</b><span>{place.hours ?? "운영시간 미확인"}</span></div>
-              <div><b>실내·실외</b><span>{place.indoor}</span></div>
-              <div><b>분위기</b><span>{place.moods.length ? place.moods.join(" · ") : "분위기 미확인"}</span></div>
+              {place.address.trim() && <div><b>주소</b><span>{place.address}</span></div>}
+              {place.hours?.trim() && <div><b>운영시간</b><span>{place.hours}</span></div>}
+              {place.indoor !== "미확인" && <div><b>실내·실외</b><span>{place.indoor}</span></div>}
+              {place.moods.length > 0 && <div><b>분위기</b><span>{place.moods.join(" · ")}</span></div>}
             </div>
             <button type="button" className="btn btn-buy-cta btn-full" onClick={() => loadCandidates(100)} disabled={replacing}>이 장소 교체</button>
           </>
@@ -95,9 +94,9 @@ export function PlaceSheet({
                         </span>
                         <span className="candidate-meta">
                           {c.subcategory && <span className="badge badge-neutral">{c.subcategory}</span>}
-                          <span className="badge badge-neutral">{c.indoor}</span>
-                          {c.open === true ? <span className="badge badge-success">영업 중</span> : <span className="badge badge-attention">운영시간 미확인</span>}
-                          {c.moods.length ? c.moods.join(" · ") : <span className="badge badge-attention">분위기 미확인</span>}
+                          {c.indoor !== "미확인" && <span className="badge badge-neutral">{c.indoor}</span>}
+                          {c.open === true && <span className="badge badge-success">영업 중</span>}
+                          {c.moods.join(" · ")}
                         </span>
                       </button>
                     );

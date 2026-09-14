@@ -68,7 +68,10 @@ function remove(key: string) {
 }
 
 export function loadPreferences(): Preferences {
-  return read(KEY_PREFS, (v) => ({ ...DEFAULT_PREFERENCES, ...(v as Partial<Preferences>) }), DEFAULT_PREFERENCES);
+  return read(KEY_PREFS, (v) => {
+    const prefs = v as Partial<Preferences>;
+    return { foods: prefs.foods ?? [], plays: prefs.plays ?? [], moods: prefs.moods ?? [] };
+  }, DEFAULT_PREFERENCES);
 }
 export function savePreferences(p: Preferences) {
   write(KEY_PREFS, p);
@@ -87,7 +90,8 @@ export function resetPreferences() {
 
 export function loadLastRequest(): CourseRequest | null {
   return read<CourseRequest | null>(KEY_LAST_REQUEST, (v) => {
-    const request = v as CourseRequest;
+    const request = { ...(v as CourseRequest & { indoor?: unknown }) };
+    delete request.indoor;
     return { ...request, townId: findDistrict(request.townId)?.id ?? null };
   }, null);
 }

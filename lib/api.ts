@@ -8,9 +8,9 @@ import type {
 } from "./contracts";
 import { distanceMeters } from "./geo";
 import { openingStatus, type Recommendation } from "./course";
-import { loadLastRequest, loadPreferences } from "./storage";
+import { loadPreferences } from "./storage";
 import type {
-  Candidate, Category, Course, CourseRequest, IndoorPref, Leg, Mood, Place, Preferences, Replacements, Weather,
+  Candidate, Category, Course, CourseRequest, Leg, Mood, Place, Preferences, Replacements, Weather,
 } from "./types";
 
 export type Stage = "장소 찾는 중" | "날씨 확인 중" | "경로 계산 중" | "상세 정보 확인 중";
@@ -28,15 +28,14 @@ export class CourseError extends Error {
 // ---------- 요청 변환 ----------
 
 const CATEGORY_FROM: Record<BackendPlace["category"], Category> = { cafe: "카페", restaurant: "식당", activity: "놀거리" };
-const ENVIRONMENT_TO: Record<IndoorPref, BackendPreferences["environment"]> = { 실내: "indoor", 실외: "outdoor", 상관없음: "any" };
 
-/** 기기에 저장된 취향을 백엔드 형태로. 이번 요청의 실내·실외 선호가 있으면 그것을 우선한다. */
-export function toBackendPreferences(prefs: Preferences, indoorOverride?: IndoorPref): BackendPreferences {
+/** 실내·실외를 제한하지 않고 저장된 취향을 백엔드 형태로 변환한다. */
+export function toBackendPreferences(prefs: Preferences): BackendPreferences {
   return {
     foods: prefs.foods,
     activities: prefs.plays,
     atmospheres: prefs.moods,
-    environment: ENVIRONMENT_TO[indoorOverride ?? prefs.indoor],
+    environment: "any",
   };
 }
 
@@ -199,7 +198,7 @@ export async function recommendCourse(
   opts: { exclude?: string[]; onStage?: (s: Stage) => void } = {},
 ): Promise<Course> {
   if (!req.townId || !findDistrict(req.townId)) throw new CourseError("지역을 찾을 수 없어요.", "request");
-  const prefs = toBackendPreferences(loadPreferences(), req.indoor);
+  const prefs = toBackendPreferences(loadPreferences());
   try {
     const result = await createCourse(toBackendRequest(req), prefs, opts.exclude ?? [], (stage) => opts.onStage?.(STAGE_OF[stage]));
     return unwrap(result, prefs.environment);
@@ -210,7 +209,7 @@ export async function recommendCourse(
 
 /** 특정 구간만 다시 조회한다(spec 5.6). */
 export async function retryLeg(course: Course, index: number): Promise<Course> {
-  const prefs = toBackendPreferences(loadPreferences(), currentIndoor());
+  const prefs = toBackendPreferences(loadPreferences());
   try {
     return toCourse(await retryCourseLeg(course.backend, index, prefs), prefs.environment);
   } catch (err) {
@@ -220,7 +219,7 @@ export async function retryLeg(course: Course, index: number): Promise<Course> {
 
 /** 반경 내 같은 카테고리 교체 후보 (spec 3장 '장소 하나 교체하기'). */
 export async function fetchReplacements(course: Course, index: number, radius: 100 | 300 | 500): Promise<Replacements> {
-  const prefs = toBackendPreferences(loadPreferences(), currentIndoor());
+  const prefs = toBackendPreferences(loadPreferences());
   const origin = course.backend.visits[index].place;
   const arrival = course.backend.visits[index].arrivalAt;
   try {
@@ -243,17 +242,12 @@ export async function fetchReplacements(course: Course, index: number, radius: 1
 
 /** 후보로 교체하고 앞뒤 구간을 다시 계산한다. */
 export async function replacePlace(course: Course, index: number, candidateId: string, radius: 100 | 300 | 500): Promise<Course> {
-  const prefs = toBackendPreferences(loadPreferences(), currentIndoor());
+  const prefs = toBackendPreferences(loadPreferences());
   try {
     return toCourse(await applyReplacement(course.backend, index, candidateId, prefs, radius), prefs.environment);
   } catch (err) {
     fail(err);
   }
-}
-
-/** 이 코스를 만들 때 쓴 실내·실외 선호는 저장된 마지막 요청에 있다. 없으면 취향 설정을 따른다. */
-function currentIndoor(): IndoorPref | undefined {
-  return loadLastRequest()?.indoor;
 }
 
 /** 구별 카테고리 후보 수. 실패하면 null (안내 없이 모두 선택 가능으로 둔다). */
