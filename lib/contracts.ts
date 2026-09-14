@@ -5,7 +5,7 @@ import { locateRegion } from './regions';
 export const regions = regionData;
 export const categorySchema = z.enum(['cafe', 'restaurant', 'activity']);
 export const modeSchema = z.enum(['walk', 'bus', 'subway', 'taxi']);
-export const foodSchema = z.enum(['한식', '양식', '일식', '중식', '아시안', '카페 디저트', '기타']);
+export const foodSchema = z.enum(['한식', '양식', '일식', '중식', '아시안', '기타']);
 export const activitySchema = z.enum(['전시', '체험', '쇼핑', '공원', '공연', '기타']);
 export const atmosphereSchema = z.enum(['조용함', '활기참', '감성', '힙플']);
 export const environmentSchema = z.enum(['indoor', 'outdoor', 'mixed', 'unknown']);

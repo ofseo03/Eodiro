@@ -1,7 +1,7 @@
 // 화면에서 쓰는 뷰 타입. 백엔드 계약(lib/contracts.ts)은 lib/api.ts 어댑터가 이 타입으로 바꿔 준다.
 import type { Course as BackendCourse } from "./contracts";
 
-export const FOOD_TYPES = ["한식", "양식", "일식", "중식", "아시안", "카페 디저트", "기타"] as const;
+export const FOOD_TYPES = ["한식", "양식", "일식", "중식", "아시안", "기타"] as const;
 export const PLAY_TYPES = ["전시", "체험", "쇼핑", "공원", "공연", "기타"] as const;
 export const MOODS = ["조용함", "활기참", "감성", "힙플"] as const;
 export const INDOOR_PREFS = ["실내", "실외", "상관없음"] as const;
