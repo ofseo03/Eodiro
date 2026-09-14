@@ -22,6 +22,7 @@
     "import:places": "node --env-file-if-exists=.env.local --import tsx scripts/import-places.ts",
     "add:places": "node --env-file-if-exists=.env.local --import tsx scripts/add-places.ts",
     "gen:missing": "node --import tsx scripts/gen-missing-template.ts",
+    "fill:missing": "node --env-file-if-exists=.env.local --import tsx scripts/fill-missing.ts",
     "gen:regions": "node scripts/gen-regions.mjs",
     "validate:regions": "node scripts/validate-regions.mjs",
     "seed:sample": "node --import tsx scripts/import-places.ts data/sample-places.json"
