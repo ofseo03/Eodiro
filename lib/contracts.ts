@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import regionData from '../config/regions.json';
 import { locateRegion } from './regions';
+import { MAX_PER_CATEGORY, compositionProblem } from './composition';
 
 export const regions = regionData;
 export const categorySchema = z.enum(['cafe', 'restaurant', 'activity']);
@@ -27,13 +28,13 @@ export const requestSchema = z.strictObject({
   regionId: regionIdSchema,
   startAt: dateTimeSchema.default(() => new Date().toISOString()),
   counts: z.strictObject({
-    cafe: z.number().int().min(0).max(5).default(1),
-    restaurant: z.number().int().min(0).max(5).default(1),
-    activity: z.number().int().min(0).max(5).default(1),
-  }).default({ cafe: 1, restaurant: 1, activity: 1 }).refine(
-    c => Object.values(c).reduce((a, b) => a + b, 0) >= 2 && Object.values(c).reduce((a, b) => a + b, 0) <= 5,
-    '장소 수는 2~5곳이어야 합니다',
-  ),
+    cafe: z.number().int().min(0).max(MAX_PER_CATEGORY.cafe).default(1),
+    restaurant: z.number().int().min(0).max(MAX_PER_CATEGORY.restaurant).default(1),
+    activity: z.number().int().min(0).max(MAX_PER_CATEGORY.activity).default(1),
+  }).default({ cafe: 1, restaurant: 1, activity: 1 }).superRefine((c, ctx) => {
+    const problem = compositionProblem(c);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
+  }),
   constraints: constraintsSchema.default({ modes: ['walk', 'bus', 'subway'], maxWalkMeters: 500, maxTravelMinutes: 60 }),
 });
 const intervalSchema = z.tuple([z.number().int().min(0).max(1439), z.number().int().min(1).max(2880)])
