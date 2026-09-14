@@ -199,6 +199,24 @@ test('transit search estimates during DFS and fetches only the chosen legs, in p
   assert.equal(calls, 2);
 });
 
+test('candidates are tried by preference score first and by distance from the previous stop second', async () => {
+  // First stop: a2 and c tie on score, so id order picks a2. Next: c (score 1, 265m) beats the nearer a3 (score 0, 177m).
+  // Without preferences, id order picks a1, then the nearest activity a2, then the cafe fills the last slot.
+  const line = [
+    place('c', 'cafe', { atmospheres: ['조용함'] }),
+    place('a1', 'activity', { lng: 127.054 + 0.006 }),
+    place('a2', 'activity', { lng: 127.054 + 0.003, atmospheres: ['조용함'] }),
+    place('a3', 'activity', { lng: 127.054 + 0.001 }),
+  ];
+  const input = request({ counts: { cafe: 1, restaurant: 0, activity: 2 }, constraints: constraintsSchema.parse({ modes: ['walk'], maxWalkMeters: 1000 }) });
+  const result = await recommend(input, line, weather, walk, { atmospheres: ['조용함'] }, [], now);
+  assert.equal(result.status, 'ok');
+  if (result.status === 'ok') assert.deepEqual(result.course.visits.map(v => v.place.id), ['a2', 'c', 'a3']);
+  const plain = await recommend(input, line, weather, walk, {}, [], now);
+  assert.equal(plain.status, 'ok');
+  if (plain.status === 'ok') assert.deepEqual(plain.course.visits.map(v => v.place.id), ['a1', 'a2', 'c']);
+});
+
 test('taxi-free alternative order wins; genuine no-route permits only an unknown-time taxi fallback', async () => {
   const input = request({ counts: { cafe: 1, restaurant: 1, activity: 0 }, constraints: constraintsSchema.parse({ modes: ['walk', 'taxi'] }) });
   const resolver: RouteResolver = async (a, b, at, c) => a.id === 'c' ? emptyLeg(a, b, at) : walkingLeg(a, b, at, c.maxWalkMeters);

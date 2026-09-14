@@ -70,7 +70,7 @@ function candidatePool(places: Place[], request: CourseRequest, prefs: Preferenc
   const score = (p: Place) => prefs.atmospheres.filter(a => p.atmospheres.includes(a)).length
     + (!weather.indoorPriority && prefs.environment !== 'any' && p.environment === prefs.environment ? 1 : 0);
   pool.sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
-  return { pool, quotas, tier };
+  return { pool, quotas, tier, score };
 }
 
 export type Recommendation = { status: 'ok'; course: Course } | { status: 'no_course' | 'exhausted' | 'search_limit'; message: string };
@@ -97,6 +97,19 @@ export async function recommend(
     return known ? { ...known, referenceAt: at } : estimatedLeg(a, b, at, request.constraints);
   };
   const target = Object.values(request.counts).reduce((a, b) => a + b, 0);
+  // 첫 장소는 선호 점수순, 그다음부터는 같은 점수 안에서 직전 장소와 가까운 순으로 시도한다.
+  const ordered = new Map<string, Place[]>();
+  const candidatesAfter = (prev: Place | undefined) => {
+    if (!prev) return candidates.pool;
+    let list = ordered.get(prev.id);
+    if (!list) {
+      const score = new Map(candidates.pool.map(p => [p.id, candidates.score(p)] as const));
+      const distance = new Map(candidates.pool.map(p => [p.id, distanceMeters(prev, p)] as const));
+      list = [...candidates.pool].sort((a, b) => score.get(b.id)! - score.get(a.id)! || distance.get(a.id)! - distance.get(b.id)! || a.id.localeCompare(b.id));
+      ordered.set(prev.id, list);
+    }
+    return list;
+  };
   function search(allowFailed: boolean, allowTaxi: boolean): { course: Course | null; hitLimit: boolean } {
     const used = new Set<string>(), taken = new Map<string, number>();
     let steps = 0, hitLimit = false;
@@ -104,7 +117,7 @@ export async function recommend(
       // ponytail: bounded DFS; return search_limit, never a false no_course. Add a spatial solver if catalogs outgrow this budget.
       if (hitLimit) return null;
       if (selected.length === target) return summarizeCourse(selected, legs, request, weather, prefs);
-      for (const p of candidates!.pool) {
+      for (const p of candidatesAfter(selected[selected.length - 1])) {
         const tier = candidates!.tier(p);
         if (used.has(p.id) || (taken.get(tier) ?? 0) >= candidates!.quotas.get(tier)!) continue;
         if (!canFollow(selected.length ? selected[selected.length - 1].category : null, p.category)) continue;
