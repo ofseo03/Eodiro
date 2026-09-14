@@ -95,7 +95,7 @@ export function Landing() {
       <section className="container section" aria-label="시작하기">
         <div className="card-promo-strip">
           <h2 className="t-display-lg">지금 우리 동네에서<br />시작해 보세요.</h2>
-          <p className="t-subtitle-md">취향 네 가지만 고르면 끝. 건너뛰어도 코스는 받을 수 있어요.</p>
+          <p className="t-subtitle-md">취향 세 가지만 고르면 끝. 건너뛰어도 코스는 받을 수 있어요.</p>
           <div className="row">
             <Link className="btn btn-primary" href="#request">지금 시작하기</Link>
             <Link className="btn btn-secondary" href="#how">어떻게 추천하나요</Link>

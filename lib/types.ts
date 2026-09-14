@@ -5,22 +5,19 @@ import { MAX_PER_CATEGORY } from "./composition";
 export const FOOD_TYPES = ["한식", "양식", "일식", "중식", "아시안", "카페 디저트", "기타"] as const;
 export const PLAY_TYPES = ["전시", "체험", "쇼핑", "공원", "공연", "기타"] as const;
 export const MOODS = ["조용함", "활기참", "감성", "힙플"] as const;
-export const INDOOR_PREFS = ["실내", "실외", "상관없음"] as const;
 
 export type FoodType = (typeof FOOD_TYPES)[number];
 export type PlayType = (typeof PLAY_TYPES)[number];
 export type Mood = (typeof MOODS)[number];
-export type IndoorPref = (typeof INDOOR_PREFS)[number];
 
 /** 초기 취향(spec 2.1). 기기(localStorage)에만 저장한다. */
 export type Preferences = {
   foods: FoodType[];
   plays: PlayType[];
   moods: Mood[];
-  indoor: IndoorPref;
 };
 
-export const DEFAULT_PREFERENCES: Preferences = { foods: [], plays: [], moods: [], indoor: "상관없음" };
+export const DEFAULT_PREFERENCES: Preferences = { foods: [], plays: [], moods: [] };
 
 export type Category = "카페" | "식당" | "놀거리";
 export const CATEGORIES: Category[] = ["카페", "식당", "놀거리"];
@@ -34,7 +31,6 @@ export type CourseRequest = {
   maxTravelMinutes: number;
   transport: { bus: boolean; subway: boolean; walk: boolean; taxi: boolean };
   maxWalkMeters: number;
-  indoor: IndoorPref;
 };
 
 export { MIN_PLACES, MAX_PLACES } from "./composition";
