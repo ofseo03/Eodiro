@@ -1,9 +1,10 @@
-import { preferencesSchema, requestSchema, type Course, type CourseRequest, type Place, type Preferences, type RouteResolver, type Visit, type Weather } from './contracts';
+import { preferencesSchema, requestSchema, type Course, type CourseRequest, type Leg, type Place, type Preferences, type RouteResolver, type Visit, type Weather } from './contracts';
 import { distanceMeters } from './geo';
-import { taxiAlternative } from './routing';
+import { estimatedLeg, taxiAlternative } from './routing';
 import { canFollow } from './composition';
 
 const dwell = { cafe: 60, restaurant: 60, activity: 90 };
+const MAX_VERIFY_ROUNDS = 40;
 const categories = ['cafe', 'restaurant', 'activity'] as const;
 export const addMinutes = (at: string, minutes: number) => new Date(Date.parse(at) + minutes * 60000).toISOString();
 
@@ -87,17 +88,19 @@ export async function recommend(
     const exhausted = excluded.size > 0 && candidatePool(regional, request, prefs, weather) !== null;
     return { status: exhausted ? 'exhausted' : 'no_course', message: exhausted ? '더 이상 새로운 장소가 없습니다' : '조건에 맞는 코스가 없습니다' };
   }
-  const memo = new Map<string, ReturnType<RouteResolver>>();
-  const route: RouteResolver = (a, b, at, constraints) => {
-    const key = JSON.stringify([a.id, b.id, at]);
-    if (!memo.has(key)) memo.set(key, resolve(a, b, at, constraints));
-    return memo.get(key)!;
+  // 탐색은 경로 API 없이 추정 구간으로 돌리고, 확정된 코스의 구간만 병렬로 실제 조회한다.
+  // 조회 결과는 장소 쌍 기준으로 기억해 다음 탐색에 그대로 쓰므로, 경로 없음·조회 실패·시간 초과는 실제 결과대로 반영된다.
+  const verified = new Map<string, Leg>();
+  const pairKey = (a: Place, b: Place) => `${a.id}\n${b.id}`;
+  const legFor = (a: Place, b: Place, at: string) => {
+    const known = verified.get(pairKey(a, b));
+    return known ? { ...known, referenceAt: at } : estimatedLeg(a, b, at, request.constraints);
   };
-  let steps = 0, hitLimit = false;
   const target = Object.values(request.counts).reduce((a, b) => a + b, 0);
-  async function search(allowFailed: boolean, allowTaxi: boolean): Promise<Course | null> {
+  function search(allowFailed: boolean, allowTaxi: boolean): { course: Course | null; hitLimit: boolean } {
     const used = new Set<string>(), taken = new Map<string, number>();
-    async function visit(selected: Place[], legs: Course['legs'], arrival: string | null, known: number): Promise<Course | null> {
+    let steps = 0, hitLimit = false;
+    function visit(selected: Place[], legs: Course['legs'], arrival: string | null, known: number): Course | null {
       // ponytail: bounded DFS; return search_limit, never a false no_course. Add a spatial solver if catalogs outgrow this budget.
       if (hitLimit) return null;
       if (selected.length === target) return summarizeCourse(selected, legs, request, weather, prefs);
@@ -111,7 +114,7 @@ export async function recommend(
         if (selected.length) {
           const prev = selected[selected.length - 1];
           const departure = arrival === null ? request.startAt : addMinutes(arrival, dwell[prev.category]);
-          let leg = await route(prev, p, departure, request.constraints);
+          let leg = legFor(prev, p, departure);
           if (allowTaxi) leg = taxiAlternative(leg, request.constraints);
           if (leg.status === 'no_route' || (leg.status === 'route_failed' && !allowFailed) || (leg.status === 'taxi_review' && !allowTaxi)) continue;
           if (leg.walkLimit === 'estimated_exceeded') continue;
@@ -122,22 +125,34 @@ export async function recommend(
         }
         if (openingStatus(p, nextArrival) === 'closed') continue;
         used.add(p.id); taken.set(tier, (taken.get(tier) ?? 0) + 1);
-        const result = await visit([...selected, p], nextLegs, nextArrival, nextKnown);
+        const result = visit([...selected, p], nextLegs, nextArrival, nextKnown);
         used.delete(p.id); taken.set(tier, taken.get(tier)! - 1);
         if (result || hitLimit) return result;
       }
       return null;
     }
-    return visit([], [], request.startAt, 0);
+    return { course: visit([], [], request.startAt, 0), hitLimit };
   }
-  // Exhaust taxi-free orders before permitting a taxi; errors themselves never trigger a taxi.
-  for (const [failed, taxi] of [[false, false], [true, false], [true, true]]) {
-    if (taxi && !request.constraints.modes.includes('taxi')) continue;
-    const course = await search(failed, taxi);
-    if (course) return { status: 'ok', course };
-    if (hitLimit) return { status: 'search_limit', message: '계산 범위를 초과했습니다. 장소 수를 줄여 다시 시도하세요' };
+  const limit = { status: 'search_limit' as const, message: '계산 범위를 초과했습니다. 장소 수를 줄여 다시 시도하세요' };
+  // 한 라운드마다 확정 코스의 미조회 구간을 모두 실제 조회하므로 라운드 수는 서로 다른 장소 쌍 수를 넘지 않는다. 상한은 안전장치다.
+  for (let round = 0; round < MAX_VERIFY_ROUNDS; round++) {
+    let course: Course | null = null;
+    // Exhaust taxi-free orders before permitting a taxi; errors themselves never trigger a taxi.
+    for (const [failed, taxi] of [[false, false], [true, false], [true, true]]) {
+      if (taxi && !request.constraints.modes.includes('taxi')) continue;
+      const result = search(failed, taxi);
+      if (result.hitLimit) return limit;
+      if (result.course) { course = result.course; break; }
+    }
+    if (!course) return { status: 'no_course', message: '조건에 맞는 코스가 없습니다' };
+    const stops = course.visits.map(v => v.place);
+    const pending = course.legs.map((leg, i) => ({ leg, from: stops[i], to: stops[i + 1] })).filter(({ from, to }) => !verified.has(pairKey(from, to)));
+    if (!pending.length) return { status: 'ok', course };
+    await Promise.all(pending.map(async ({ leg, from, to }) => {
+      verified.set(pairKey(from, to), await resolve(from, to, leg.referenceAt, request.constraints));
+    }));
   }
-  return { status: 'no_course', message: '조건에 맞는 코스가 없습니다' };
+  return limit;
 }
 
 export function replacementCandidates(course: Course, index: number, places: Place[], preferences: unknown = {}, radius: 100 | 300 | 500 = 100) {

@@ -1,6 +1,6 @@
 import { placeSchema, preferencesSchema, requestSchema, type Course, type RouteResolver, type Weather, type Place } from './contracts';
 import { recommend, replacementCandidates, replacePlace, retryLeg, summarizeCourse } from './course';
-import { walkingLeg, emptyLeg } from './routing';
+import { walkingLeg, emptyLeg, memoizeRoutes } from './routing';
 
 export class BackendError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
@@ -39,10 +39,12 @@ export async function createCourse(input: unknown, preferences: unknown = {}, ex
       temperature: null, precipitationProbability: null, forecastAt: request.startAt, issuedAt: null, fetchedAt: new Date().toISOString() };
   }
   const details = new Map<string, Place>(), excluded = new Set(excludedIds);
+  // 재시도 사이에도 같은 장소 쌍의 경로는 다시 조회하지 않는다.
+  const route = memoizeRoutes(routeResolver);
   // ponytail: cap at three detail rounds; raise only if real usage justifies the extra wait.
   for (let attempt = 0; attempt < 3; attempt++) {
     onProgress?.('routes');
-    const result = await recommend(request, places.map(p => details.get(p.id) ?? p), weather, routeResolver, preferences, [...excluded], now);
+    const result = await recommend(request, places.map(p => details.get(p.id) ?? p), weather, route, preferences, [...excluded], now);
     if (result.status !== 'ok') return result;
     onProgress?.('details');
     result.course = await hydrateCourse(result.course, preferences, result.course.visits.map(v => v.place.id), details);
