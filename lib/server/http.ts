@@ -1,6 +1,10 @@
 export async function fetchText(url: URL, headers?: HeadersInit, body?: URLSearchParams | string) {
   const response = await fetch(url, { headers, body, method: body ? 'POST' : 'GET', signal: AbortSignal.timeout(8000), cache: 'no-store', redirect: 'error' });
-  if (!response.ok) throw new Error('외부 API 응답 오류');
+  if (!response.ok) {
+    // 원인 추적용으로 상태 코드와 본문 앞부분을 남긴다. data.go.kr는 미승인·트래픽 초과 등을 XML 본문에 담아 보낸다.
+    const body = await readResponseText(response).catch(() => '');
+    throw new Error(`외부 API 응답 오류 (HTTP ${response.status}) ${body.replace(/\s+/g, ' ').slice(0, 300)}`.trimEnd());
+  }
   return readResponseText(response);
 }
 
